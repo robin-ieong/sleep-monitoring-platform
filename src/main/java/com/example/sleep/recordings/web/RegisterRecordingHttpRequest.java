@@ -1,4 +1,7 @@
-package com.example.sleep.recordings;
+package com.example.sleep.recordings.web;
+
+import com.example.sleep.recordings.RecordingId;
+import com.example.sleep.recordings.application.RegisterRecordingCommand;
 
 public record RegisterRecordingHttpRequest(
         String id,

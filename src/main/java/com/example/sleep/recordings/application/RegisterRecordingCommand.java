@@ -1,4 +1,6 @@
-package com.example.sleep.recordings;
+package com.example.sleep.recordings.application;
+
+import com.example.sleep.recordings.RecordingId;
 
 public record RegisterRecordingCommand(
         RecordingId id,

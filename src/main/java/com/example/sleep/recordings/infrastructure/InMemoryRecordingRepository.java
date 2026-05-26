@@ -1,4 +1,8 @@
-package com.example.sleep.recordings;
+package com.example.sleep.recordings.infrastructure;
+
+import com.example.sleep.recordings.Recording;
+import com.example.sleep.recordings.RecordingId;
+import com.example.sleep.recordings.application.RecordingRepository;
 
 import java.util.Map;
 import java.util.Optional;

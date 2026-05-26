@@ -1080,3 +1080,305 @@ Intentionally not included:
 ### Next Proposed Step
 
 Recommended Step 6: add a read-only retrieval endpoint, such as `GET /recordings/{id}`, backed by the existing in-memory repository and tested first. This would make the registration endpoint easier to verify manually without introducing database, S3, SQS, upload handling, or analysis logic.
+
+## 2026-05-26 13:10 BST - Step 6: Read-Only Recording Retrieval Endpoint
+
+### User Request
+
+Proceed with the next recommended step while leaving the existing uncommitted `project-log.md` change for later.
+
+### Scope
+
+Implemented a narrow read-only retrieval endpoint backed by the existing in-memory repository.
+
+Included:
+
+- `GET /recordings/{id}` endpoint.
+- `200 OK` response for existing recordings.
+- `404 Not Found` response for missing recordings.
+- Reused one recording metadata HTTP response shape for both registration and retrieval.
+- README update documenting the retrieval endpoint.
+
+Intentionally not included:
+
+- No database persistence.
+- No S3 storage adapter.
+- No SQS producer or consumer.
+- No upload handling.
+- No audio, snoring, silence, or apnea analysis logic.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/RecordingHttpResponse.java`
+- `src/main/java/com/example/sleep/recordings/RecordingNotFoundException.java`
+
+### Files Changed
+
+- `src/test/java/com/example/sleep/recordings/RecordingControllerTest.java`
+- `src/main/java/com/example/sleep/recordings/RecordingController.java`
+- `src/main/java/com/example/sleep/recordings/RecordingExceptionHandler.java`
+- `README.md`
+- `project-log.md`
+
+### Files Removed
+
+- `src/main/java/com/example/sleep/recordings/RegisterRecordingHttpResponse.java`
+
+### TDD Notes
+
+- Added controller tests for successful retrieval and missing-recording `404` before implementation.
+- Ran Maven tests and confirmed the expected red state: test compilation failed because the controller constructor and GET behavior did not exist yet.
+- Added the minimal controller, response DTO, and exception handling changes needed for the tests.
+
+### Modern Java Notes
+
+- `RecordingHttpResponse` remains a Java record, reused across POST and GET because both endpoints return the same immutable metadata shape.
+
+### Commands Run
+
+- `sed -n '1,240p' src/main/java/com/example/sleep/recordings/RecordingController.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/RecordingExceptionHandler.java`
+- `sed -n '1,260p' src/test/java/com/example/sleep/recordings/RecordingControllerTest.java`
+- `sed -n '1,180p' src/main/java/com/example/sleep/recordings/RecordingRepository.java`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `curl -s http://localhost:8080/actuator/health`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository spring-boot:run`
+- `curl -i -s -X POST http://localhost:8080/recordings -H 'Content-Type: application/json' --data '{"id":"rec-manual-step-6","ownerId":"user-456","originalFilename":"night-audio.m4a","contentType":"audio/mp4"}'`
+- `curl -i -s http://localhost:8080/recordings/rec-manual-step-6`
+- `curl -i -s http://localhost:8080/recordings/missing-recording`
+- `git status --short`
+- `rg --files src/main/java src/test/java | sort`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Final Maven test command succeeded.
+- Test result: 15 tests run, 0 failures, 0 errors.
+- Initial attempt to start the app from the sandbox failed with `java.net.SocketException: Operation not permitted` when binding the server socket.
+- Retried `spring-boot:run` with approved execution permissions; the updated app started on `http://localhost:8080`.
+- Manual endpoint checks succeeded:
+  - `POST /recordings` returned `201 Created`.
+  - `GET /recordings/rec-manual-step-6` returned `200 OK`.
+  - `GET /recordings/missing-recording` returned `404 Not Found`.
+
+### Next Proposed Step
+
+Recommended Step 7: add a small application service for marking a registered recording as stored, still in-memory and tested first. This would prepare the lifecycle boundary for a later upload/storage adapter without implementing S3 or file upload yet.
+
+## 2026-05-26 15:38 BST - Step 7: Mark Recording Stored Application Service
+
+### User Request
+
+Proceed with Step 7 while leaving current uncommitted changes for an end-of-day commit.
+
+### Scope
+
+Implemented a small application service for marking an existing recording as stored, backed by the in-memory repository.
+
+Included:
+
+- `MarkRecordingStoredCommand`.
+- `MarkRecordingStoredService`.
+- Spring bean wiring for `MarkRecordingStoredService`.
+- Unit tests for:
+  - Marking an existing recording as stored and saving it.
+  - Rejecting missing recordings.
+  - Rejecting recordings that are already stored.
+- README note clarifying that the stored lifecycle behavior exists as an application service, not an HTTP/upload flow yet.
+
+Intentionally not included:
+
+- No upload endpoint.
+- No S3 adapter.
+- No SQS producer or consumer.
+- No database persistence.
+- No audio, snoring, silence, or apnea analysis logic.
+
+### Files Added
+
+- `src/test/java/com/example/sleep/recordings/MarkRecordingStoredServiceTest.java`
+- `src/main/java/com/example/sleep/recordings/MarkRecordingStoredCommand.java`
+- `src/main/java/com/example/sleep/recordings/MarkRecordingStoredService.java`
+
+### Files Changed
+
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `README.md`
+- `project-log.md`
+
+### TDD Notes
+
+- Added `MarkRecordingStoredServiceTest` before production service classes.
+- Ran Maven tests and confirmed the expected red state: test compilation failed because `MarkRecordingStoredService` and `MarkRecordingStoredCommand` did not exist yet.
+- Added the minimal production code needed for the tests.
+- Ran the full Maven test command again and confirmed green state.
+
+### Modern Java Notes
+
+- `MarkRecordingStoredCommand` is a Java record. Like the existing command DTOs, it is an immutable data carrier with generated constructor/accessors and compact validation in the canonical constructor.
+
+### Commands Run
+
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/Recording.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/RecordingRepository.java`
+- `sed -n '1,260p' src/test/java/com/example/sleep/recordings/RegisterRecordingServiceTest.java`
+- `sed -n '1,240p' src/test/java/com/example/sleep/recordings/RecordingTest.java`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `git status --short`
+- `rg --files src/main/java src/test/java | sort`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Final Maven test command succeeded.
+- Test result: 18 tests run, 0 failures, 0 errors.
+
+### Current Uncommitted State
+
+The working tree intentionally still has uncommitted changes from:
+
+- The remote-push project-log entry.
+- Step 6 retrieval endpoint.
+- Step 7 mark-stored service.
+
+### Next Proposed Step
+
+Recommended next step is to review and commit the current changes before adding more behavior. After that, a narrow Step 8 could add an HTTP boundary for marking a recording as stored, or defer HTTP and introduce a storage port/interface without implementing S3 yet.
+
+## 2026-05-26 17:18 BST - Package Refactor and Step 8: Mark Stored HTTP Boundary
+
+### User Request
+
+Do both recommended next options:
+
+- Organize the growing `recordings` package into subpackages.
+- Add an HTTP boundary for marking a recording as stored.
+
+### Scope
+
+Refactored the `recordings` module by responsibility, then added a narrow HTTP endpoint around the existing mark-stored application service.
+
+Package structure after refactor:
+
+- `com.example.sleep.recordings`: domain model and value objects.
+- `com.example.sleep.recordings.application`: commands, application services, and repository port.
+- `com.example.sleep.recordings.infrastructure`: in-memory repository implementation.
+- `com.example.sleep.recordings.web`: Spring MVC controller, request DTOs, response DTOs, and exception handler.
+
+HTTP boundary added:
+
+- `PATCH /recordings/{id}/storage`
+- Request body contains:
+  - `bucketName`
+  - `objectKey`
+- Returns updated recording metadata.
+- Missing recordings return `404 Not Found`.
+
+Intentionally not included:
+
+- No upload endpoint.
+- No S3 adapter.
+- No SQS producer or consumer.
+- No database persistence.
+- No audio, snoring, silence, or apnea analysis logic.
+
+### Files Added or Moved
+
+- Moved application files under `src/main/java/com/example/sleep/recordings/application/`.
+- Moved web files under `src/main/java/com/example/sleep/recordings/web/`.
+- Moved in-memory repository under `src/main/java/com/example/sleep/recordings/infrastructure/`.
+- Moved application and web tests under matching test subpackages.
+- Added `src/main/java/com/example/sleep/recordings/web/MarkRecordingStoredHttpRequest.java`.
+
+### Files Changed
+
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingHttpResponse.java`
+- `src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `README.md`
+- `project-log.md`
+
+### TDD Notes
+
+- First performed the package refactor and verified tests stayed green.
+- Added a controller test for marking a recording as stored before implementing the HTTP endpoint.
+- Ran Maven tests and confirmed the expected red state: `RecordingController` did not yet accept `MarkRecordingStoredService` or expose the PATCH behavior.
+- Added the endpoint, request DTO, and response fields needed for the test.
+- Ran the full Maven test command again and confirmed green state.
+
+### Modern Java Notes
+
+- `MarkRecordingStoredHttpRequest` is a Java record, used as an immutable HTTP request DTO for the mark-stored endpoint.
+
+### Commands Run
+
+- `sed -n '1,260p' src/test/java/com/example/sleep/recordings/RecordingControllerTest.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/RecordingController.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/MarkRecordingStoredService.java`
+- `rg -n "package com.example.sleep.recordings|import com.example.sleep.recordings" src/main/java src/test/java`
+- `mkdir -p src/main/java/com/example/sleep/recordings/application src/main/java/com/example/sleep/recordings/web src/main/java/com/example/sleep/recordings/infrastructure src/test/java/com/example/sleep/recordings/application src/test/java/com/example/sleep/recordings/web`
+- Multiple `mv` commands to reorganize package files.
+- `perl -pi -e ...` package declaration updates for moved files.
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/actuator/health`
+- `jps -l`
+- `kill 13190`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository spring-boot:run`
+- `curl -i -s -X POST http://localhost:8080/recordings -H 'Content-Type: application/json' --data '{"id":"rec-manual-step-8","ownerId":"user-456","originalFilename":"night-audio.m4a","contentType":"audio/mp4"}'`
+- `curl -i -s -X PATCH http://localhost:8080/recordings/rec-manual-step-8/storage -H 'Content-Type: application/json' --data '{"bucketName":"sleep-recordings","objectKey":"recordings/rec-manual-step-8/audio.m4a"}'`
+- `curl -i -s -X PATCH http://localhost:8080/recordings/missing-recording/storage -H 'Content-Type: application/json' --data '{"bucketName":"sleep-recordings","objectKey":"recordings/missing-recording/audio.m4a"}'`
+- `git status --short`
+- `rg --files src/main/java src/test/java | sort`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Package refactor Maven test command succeeded.
+- Final Maven test command succeeded.
+- Test result: 19 tests run, 0 failures, 0 errors.
+- Stopped the earlier Spring Boot process that was still serving the previous build on port 8080.
+- Started the updated Spring Boot app on `http://localhost:8080`.
+- Manual endpoint checks succeeded:
+  - `POST /recordings` returned `201 Created`.
+  - `PATCH /recordings/rec-manual-step-8/storage` returned `200 OK` and status `STORED`.
+  - `PATCH /recordings/missing-recording/storage` returned `404 Not Found`.
+
+### Current Uncommitted State
+
+The working tree intentionally still has uncommitted changes from:
+
+- The remote-push project-log entry.
+- Step 6 retrieval endpoint.
+- Step 7 mark-stored service.
+- Package refactor.
+- Step 8 mark-stored HTTP endpoint.
+
+### Next Proposed Step
+
+Recommended next step is to review and commit/push the current work before adding more behavior. After that, consider adding request validation annotations and structured validation errors, or introduce a storage port/interface before implementing any S3 adapter.
+
+## 2026-05-26 12:50 BST - Initial GitHub Remote Push
+
+### User Request
+
+Record that the user pushed the project to a remote repository.
+
+### Findings
+
+- The project is now a Git repository.
+- Current branch: `main`.
+- Remote `origin` is configured as `git@github.com:robin-ieong/sleep-monitoring-platform.git`.
+- User confirmed the code was pushed to `https://github.com/robin-ieong/sleep-monitoring-platform`.
+- Working tree was clean before this log entry was added.
+
+### Commands Run
+
+- `date '+%Y-%m-%d %H:%M %Z'`
+- `git remote -v`
+- `git branch --show-current`
+- `git status --short`
+
+### Files Changed
+
+- Updated `project-log.md` with this remote repository checkpoint.

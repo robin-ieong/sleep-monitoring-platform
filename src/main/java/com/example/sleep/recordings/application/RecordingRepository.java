@@ -1,4 +1,7 @@
-package com.example.sleep.recordings;
+package com.example.sleep.recordings.application;
+
+import com.example.sleep.recordings.Recording;
+import com.example.sleep.recordings.RecordingId;
 
 import java.util.Optional;
 

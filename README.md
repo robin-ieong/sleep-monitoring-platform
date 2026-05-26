@@ -40,6 +40,37 @@ Content-Type: application/json
 
 Successful responses return `201 Created`, a `Location` header such as `/recordings/rec-123`, and the registered metadata. The endpoint currently uses the in-memory repository, so data is not persisted across application restarts.
 
+Retrieve registered recording metadata:
+
+```http
+GET /recordings/rec-123
+```
+
+Successful responses return `200 OK` and the registered metadata. Missing recordings return `404 Not Found`.
+
+Mark a recording as stored after its object has been written to storage:
+
+```http
+PATCH /recordings/rec-123/storage
+Content-Type: application/json
+
+{
+  "bucketName": "sleep-recordings",
+  "objectKey": "recordings/rec-123/audio.m4a"
+}
+```
+
+Successful responses return `200 OK` and the updated recording metadata. This endpoint records that storage has happened; it does not upload files or talk to S3 yet.
+
+## Recording Package Structure
+
+The `recordings` module is split by responsibility:
+
+- `recordings`: domain model and value objects.
+- `recordings.application`: application services, commands, and repository port.
+- `recordings.web`: Spring MVC controllers and HTTP DTOs.
+- `recordings.infrastructure`: current in-memory repository implementation.
+
 ## Project Rules
 
 - Do not generate the whole product at once.

@@ -1,5 +1,10 @@
-package com.example.sleep.recordings;
+package com.example.sleep.recordings.application;
 
+import com.example.sleep.recordings.Recording;
+import com.example.sleep.recordings.RecordingId;
+import com.example.sleep.recordings.RecordingStatus;
+import com.example.sleep.recordings.StorageObjectReference;
+import com.example.sleep.recordings.infrastructure.InMemoryRecordingRepository;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
