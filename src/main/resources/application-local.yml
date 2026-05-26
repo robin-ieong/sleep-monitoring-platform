@@ -1,0 +1,14 @@
+app:
+  aws:
+    region: eu-west-2
+    endpoint: http://localhost:4566
+  storage:
+    recordings-bucket: sleep-recordings
+  queue:
+    recording-analysis-queue: sleep-recording-analysis
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sleep_monitoring
+    username: sleep_app
+    password: sleep_app_password
