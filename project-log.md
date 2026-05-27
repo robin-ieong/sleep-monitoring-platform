@@ -1358,6 +1358,83 @@ The working tree intentionally still has uncommitted changes from:
 
 Recommended next step is to review and commit/push the current work before adding more behavior. After that, consider adding request validation annotations and structured validation errors, or introduce a storage port/interface before implementing any S3 adapter.
 
+## 2026-05-26 17:40 BST - End-of-Day Handoff After Step 8 Push
+
+### User Request
+
+Prepare the project so work can continue cleanly tomorrow after the user pushed the current code.
+
+### Current State
+
+- The project is on branch `main`.
+- The working tree was clean before this handoff entry was added.
+- Latest local commit:
+  - `d0306aa Add recording retrieval and storage lifecycle endpoints`
+- The user confirmed the latest work was pushed to the remote repository.
+- The Spring Boot dev server that was started for manual verification has been stopped.
+- `http://localhost:8080/actuator/health` now returns no response (`000`), confirming no app is currently serving there from this session.
+
+### Implemented Behavior
+
+- Recording registration:
+  - `POST /recordings`
+- Recording retrieval:
+  - `GET /recordings/{id}`
+- Mark recording as stored:
+  - `PATCH /recordings/{id}/storage`
+- Recording lifecycle application service:
+  - `MarkRecordingStoredService`
+- Package organization:
+  - `recordings`: domain model and value objects.
+  - `recordings.application`: commands, services, and repository port.
+  - `recordings.infrastructure`: in-memory repository implementation.
+  - `recordings.web`: Spring MVC controller, request/response DTOs, and exception handler.
+
+### Latest Verification
+
+The latest test run before the user committed/pushed succeeded:
+
+```bash
+MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test
+```
+
+Result:
+
+- 19 tests run.
+- 0 failures.
+- 0 errors.
+
+Manual endpoint checks also passed before the app was stopped:
+
+- `POST /recordings` returned `201 Created`.
+- `PATCH /recordings/rec-manual-step-8/storage` returned `200 OK` with status `STORED`.
+- `PATCH /recordings/missing-recording/storage` returned `404 Not Found`.
+
+### Commands Run
+
+- `git status --short`
+- `git log --oneline -3`
+- `git branch --show-current`
+- `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/actuator/health`
+- `jps -l`
+- `ps -ef | rg 'SleepMonitoringApplication|spring-boot|target/classes'`
+- `kill 27479`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Files Changed
+
+- Updated `project-log.md` with this end-of-day handoff.
+
+### Next Proposed Step
+
+Start tomorrow by reading `AGENTS.md` and `project-log.md`, then check `git status --short`.
+
+Expected state after this handoff entry:
+
+- `project-log.md` will be modified locally because this handoff was written after the user's push.
+
+Recommended next technical step: add request validation annotations and structured validation errors for the HTTP request DTOs, still TDD-first and without adding S3, SQS, database persistence, upload handling, or audio analysis.
+
 ## 2026-05-26 12:50 BST - Initial GitHub Remote Push
 
 ### User Request
@@ -1382,3 +1459,314 @@ Record that the user pushed the project to a remote repository.
 ### Files Changed
 
 - Updated `project-log.md` with this remote repository checkpoint.
+
+## 2026-05-27 09:48 BST - Step 9: HTTP Request Validation Errors
+
+### User Request
+
+Read `AGENTS.md` and `project-log.md`, then continue from the handoff.
+
+### Scope
+
+Continued from the Step 8 handoff by adding validation annotations and structured validation errors for the existing HTTP request DTOs.
+
+Included:
+
+- Bean Validation checks for `POST /recordings` request fields:
+  - `id`
+  - `ownerId`
+  - `originalFilename`
+  - `contentType`
+- Bean Validation checks for `PATCH /recordings/{id}/storage` request fields:
+  - `bucketName`
+  - `objectKey`
+- Structured `400 Bad Request` responses for request validation failures:
+  - `message`
+  - `fieldErrors`
+- Controller tests for invalid registration and invalid storage-reference requests.
+- README notes for validation behavior.
+
+Intentionally not included:
+
+- No S3 adapter.
+- No SQS producer or consumer.
+- No database persistence.
+- No upload handling.
+- No audio, snoring, silence, or apnea analysis logic.
+
+### Files Changed
+
+- `src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `src/main/java/com/example/sleep/recordings/web/RegisterRecordingHttpRequest.java`
+- `src/main/java/com/example/sleep/recordings/web/MarkRecordingStoredHttpRequest.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingExceptionHandler.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingErrorResponse.java`
+- `README.md`
+- `project-log.md`
+
+### TDD Notes
+
+- Updated controller tests first to expect structured field-level validation errors.
+- Ran Maven tests and confirmed the expected red state: invalid requests still reached domain/application validation and returned a single exception message.
+- Added `@NotBlank` constraints, `@Valid` request-body validation, and a `MethodArgumentNotValidException` handler.
+- Ran the full Maven test command again and confirmed green state.
+
+### Modern Java Notes
+
+- The request and error DTOs remain Java records, which are immutable data carriers newer than Java 8.
+- The error response uses `Map.of()` for an empty field-error map. `Map.of()` was added in Java 9 and is a concise way to create small immutable maps.
+
+### Commands Run
+
+- `pwd && rg --files`
+- `sed -n '1,220p' AGENTS.md`
+- `sed -n '1,1640p' project-log.md`
+- `git status --short`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/web/RecordingExceptionHandler.java`
+- `sed -n '1,320p' src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `sed -n '1,200p' src/main/java/com/example/sleep/recordings/web/RegisterRecordingHttpRequest.java`
+- `sed -n '1,200p' src/main/java/com/example/sleep/recordings/web/MarkRecordingStoredHttpRequest.java`
+- `sed -n '1,200p' src/main/java/com/example/sleep/recordings/web/RecordingErrorResponse.java`
+- `sed -n '1,260p' pom.xml`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/Recording.java`
+- `sed -n '1,200p' src/main/java/com/example/sleep/recordings/RecordingId.java`
+- `sed -n '1,200p' src/main/java/com/example/sleep/recordings/StorageObjectReference.java`
+- `sed -n '1,200p' src/main/java/com/example/sleep/recordings/application/RegisterRecordingCommand.java`
+- `sed -n '1,200p' src/main/java/com/example/sleep/recordings/application/MarkRecordingStoredCommand.java`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `sed -n '1,260p' README.md`
+- `git diff -- src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java src/main/java/com/example/sleep/recordings/web/RecordingController.java src/main/java/com/example/sleep/recordings/web/RegisterRecordingHttpRequest.java src/main/java/com/example/sleep/recordings/web/MarkRecordingStoredHttpRequest.java src/main/java/com/example/sleep/recordings/web/RecordingExceptionHandler.java src/main/java/com/example/sleep/recordings/web/RecordingErrorResponse.java README.md project-log.md`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Red-state Maven test run failed as expected before implementation:
+  - 20 tests run.
+  - 2 failures.
+- Final Maven test command succeeded.
+  - 20 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Next Proposed Step
+
+Recommended next step: review and commit the current validation changes plus the existing handoff log entry. After that, consider a small storage port/interface before implementing any S3 adapter, or add focused validation coverage for malformed JSON/request-body parsing.
+
+## 2026-05-27 10:30 BST - Step 10: Recording Storage Port Boundary
+
+### User Request
+
+Defer committing and additional HTTP validation coverage until later, and proceed directly to introducing a small storage port/interface before any S3 implementation.
+
+### Scope
+
+Added a narrow application-layer storage boundary for recording content.
+
+Included:
+
+- `RecordingStorage` application port.
+- `StoreRecordingContentCommand`.
+- `StoreRecordingContentService`.
+- Unit tests for:
+  - Storing content for an existing recording.
+  - Marking the recording as stored after storage succeeds.
+  - Rejecting missing recordings without calling storage.
+  - Rejecting already stored recordings without calling storage.
+  - Defensively copying command content bytes.
+  - Rejecting empty content.
+- README note documenting the storage boundary.
+
+Intentionally not included:
+
+- No S3 adapter.
+- No upload endpoint.
+- No file-transfer HTTP workflow.
+- No SQS producer or consumer.
+- No database persistence.
+- No audio, snoring, silence, or apnea analysis logic.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/application/RecordingStorage.java`
+- `src/main/java/com/example/sleep/recordings/application/StoreRecordingContentCommand.java`
+- `src/main/java/com/example/sleep/recordings/application/StoreRecordingContentService.java`
+- `src/test/java/com/example/sleep/recordings/application/StoreRecordingContentServiceTest.java`
+
+### Files Changed
+
+- `README.md`
+- `project-log.md`
+
+### TDD Notes
+
+- Added `StoreRecordingContentServiceTest` first.
+- Ran Maven tests and confirmed the expected red state: compilation failed because the storage port, command, and service did not exist.
+- Added the minimal application-layer production code needed for the tests.
+- Fixed one test assertion to compare object identity for the stored `Recording`, because `Recording` is an immutable class without value-based `equals`.
+- Ran the full Maven test command again and confirmed green state.
+
+### Modern Java Notes
+
+- `StoreRecordingContentCommand` is a Java record, used for a small immutable command object.
+- Because arrays are mutable and Java record equality/accessors do not automatically copy arrays, the command defensively copies the `byte[]` in the constructor and accessor.
+
+### Commands Run
+
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/application/MarkRecordingStoredService.java`
+- `sed -n '1,260p' src/test/java/com/example/sleep/recordings/application/MarkRecordingStoredServiceTest.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/application/RecordingRepository.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/infrastructure/InMemoryRecordingRepository.java`
+- `git status --short`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `date '+%Y-%m-%d %H:%M %Z'`
+- `git diff --stat`
+
+### Verification
+
+- Red-state Maven test run failed as expected before implementation due to missing classes.
+- An intermediate Maven test run found one failing assertion in the new test, which was corrected.
+- Final Maven test command succeeded:
+  - 25 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Current Uncommitted State
+
+The working tree intentionally still has uncommitted changes from:
+
+- The prior end-of-day handoff log entry.
+- Step 9 HTTP request validation.
+- Step 10 storage port boundary.
+
+### Next Proposed Step
+
+Recommended next step: commit the current work when ready. After that, a narrow next technical step would be either an in-memory/fake storage adapter for local development tests or focused HTTP error coverage for malformed JSON and missing request bodies.
+
+## 2026-05-27 11:22 BST - Scalability and Presigned Upload Direction
+
+### User Request
+
+Record that scalability is important for this project because the goal is to simulate a production-like environment.
+
+### Decision
+
+Future architecture choices should favor production-like, scalable boundaries while still being implemented in small confirmed steps.
+
+For recording audio uploads, the preferred real upload direction is direct-to-S3 presigned uploads:
+
+- Backend creates recording metadata and lifecycle status.
+- Backend chooses the S3 bucket/object key.
+- Backend returns a temporary presigned upload URL.
+- Client uploads audio bytes directly to S3.
+- Backend verifies the S3 object exists before marking the recording as stored.
+- PostgreSQL remains the source of truth for metadata, ownership, storage reference, and lifecycle status.
+
+This direction is preferred because large audio files should not make the API server the file-transfer bottleneck if the app scales.
+
+### Files Changed
+
+- `architecture-decisions.md`
+- `project-log.md`
+
+### Commands Run
+
+- `sed -n '1,260p' architecture-decisions.md`
+- `sed -n '261,620p' architecture-decisions.md`
+- `tail -n 80 project-log.md`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Next Proposed Step
+
+When implementation continues, define the presigned upload application boundary before adding an AWS S3 adapter.
+
+## 2026-05-27 11:26 BST - Step 11: Presigned Upload Application Boundary
+
+### User Request
+
+Proceed with the next step after recording the scalability and direct-to-S3 presigned upload direction.
+
+### Scope
+
+Added a narrow application-layer boundary for creating recording metadata and returning presigned upload instructions.
+
+Included:
+
+- `CreateRecordingUploadCommand`.
+- `CreateRecordingUploadService`.
+- `CreateRecordingUploadResult`.
+- `PresignedRecordingUpload`.
+- `PresignedRecordingUploadPort`.
+- Unit tests for:
+  - Creating recording metadata and upload instructions.
+  - Saving the new recording in `AWAITING_UPLOAD`.
+  - Rejecting duplicate recording IDs without creating upload instructions.
+  - Command validation for blank metadata.
+- README note documenting the presigned upload boundary.
+
+Intentionally not included:
+
+- No AWS SDK dependency.
+- No S3 adapter.
+- No HTTP endpoint for presigned upload creation.
+- No PostgreSQL persistence.
+- No SQS producer or consumer.
+- No audio, snoring, silence, or apnea analysis logic.
+
+### Files Added
+
+- `src/test/java/com/example/sleep/recordings/application/CreateRecordingUploadServiceTest.java`
+- `src/main/java/com/example/sleep/recordings/application/CreateRecordingUploadCommand.java`
+- `src/main/java/com/example/sleep/recordings/application/CreateRecordingUploadService.java`
+- `src/main/java/com/example/sleep/recordings/application/CreateRecordingUploadResult.java`
+- `src/main/java/com/example/sleep/recordings/application/PresignedRecordingUpload.java`
+- `src/main/java/com/example/sleep/recordings/application/PresignedRecordingUploadPort.java`
+
+### Files Changed
+
+- `README.md`
+- `project-log.md`
+
+### TDD Notes
+
+- Added `CreateRecordingUploadServiceTest` first.
+- Ran Maven tests and confirmed the expected red state: compilation failed because the presigned upload boundary types did not exist.
+- Added the minimal application-layer production code needed for the tests.
+- Ran the full Maven test command again and confirmed green state.
+
+### Modern Java Notes
+
+- The command/result/upload DTOs are Java records. Records are newer than Java 8 and are useful here because these classes are immutable data carriers.
+- `PresignedRecordingUpload` uses `URI` for the upload URL rather than `String`, which gives the upload URL a more precise type.
+
+### Commands Run
+
+- `sed -n '1,240p' src/main/java/com/example/sleep/recordings/application/RegisterRecordingService.java`
+- `sed -n '1,240p' src/test/java/com/example/sleep/recordings/application/RegisterRecordingServiceTest.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `git status --short`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Red-state Maven test run failed as expected before implementation due to missing classes.
+- Final Maven test command succeeded:
+  - 28 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Current Uncommitted State
+
+The working tree intentionally still has uncommitted changes from:
+
+- The prior end-of-day handoff log entry.
+- Step 9 HTTP request validation.
+- Step 10 storage port boundary.
+- Scalability/presigned upload architecture decision.
+- Step 11 presigned upload application boundary.
+
+### Next Proposed Step
+
+Recommended next step: commit the current work when ready. After that, a narrow implementation step could add a fake/local presigned upload adapter for tests, or add a thin HTTP endpoint that returns presigned upload instructions while still using a fake port.

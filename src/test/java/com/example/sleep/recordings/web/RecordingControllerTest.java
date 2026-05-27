@@ -95,12 +95,15 @@ class RecordingControllerTest {
                                 {
                                   "id": "rec-123",
                                   "ownerId": " ",
-                                  "originalFilename": "night-audio.m4a",
-                                  "contentType": "audio/mp4"
+                                  "originalFilename": "",
+                                  "contentType": null
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("ownerId must not be blank"));
+                .andExpect(jsonPath("$.message").value("Request validation failed"))
+                .andExpect(jsonPath("$.fieldErrors.ownerId").value("ownerId must not be blank"))
+                .andExpect(jsonPath("$.fieldErrors.originalFilename").value("originalFilename must not be blank"))
+                .andExpect(jsonPath("$.fieldErrors.contentType").value("contentType must not be blank"));
     }
 
     @Test
@@ -163,5 +166,29 @@ class RecordingControllerTest {
                     ));
                     assertThat(recording.storedAt()).contains(NOW);
                 });
+    }
+
+    @Test
+    void returnsBadRequestForInvalidStorageReference() throws Exception {
+        repository.save(Recording.register(
+                new RecordingId("rec-123"),
+                "user-456",
+                "night-audio.m4a",
+                "audio/mp4",
+                NOW
+        ));
+
+        mockMvc.perform(patch("/recordings/rec-123/storage")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bucketName": " ",
+                                  "objectKey": null
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Request validation failed"))
+                .andExpect(jsonPath("$.fieldErrors.bucketName").value("bucketName must not be blank"))
+                .andExpect(jsonPath("$.fieldErrors.objectKey").value("objectKey must not be blank"));
     }
 }

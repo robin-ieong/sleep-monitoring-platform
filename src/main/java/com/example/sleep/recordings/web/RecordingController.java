@@ -7,6 +7,7 @@ import com.example.sleep.recordings.application.MarkRecordingStoredCommand;
 import com.example.sleep.recordings.application.MarkRecordingStoredService;
 import com.example.sleep.recordings.application.RecordingRepository;
 import com.example.sleep.recordings.application.RegisterRecordingService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -44,7 +45,7 @@ public class RecordingController {
     }
 
     @PostMapping("/recordings")
-    ResponseEntity<RecordingHttpResponse> register(@RequestBody RegisterRecordingHttpRequest request) {
+    ResponseEntity<RecordingHttpResponse> register(@Valid @RequestBody RegisterRecordingHttpRequest request) {
         Recording recording = service.register(request.toCommand());
 
         return ResponseEntity
@@ -64,7 +65,7 @@ public class RecordingController {
     @PatchMapping("/recordings/{id}/storage")
     ResponseEntity<RecordingHttpResponse> markStored(
             @PathVariable String id,
-            @RequestBody MarkRecordingStoredHttpRequest request
+            @Valid @RequestBody MarkRecordingStoredHttpRequest request
     ) {
         Recording recording = markStoredService.markStored(new MarkRecordingStoredCommand(
                 new RecordingId(id),

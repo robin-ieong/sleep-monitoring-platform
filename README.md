@@ -18,7 +18,7 @@ The platform will accept sleep audio recordings, store them, process them asynch
 
 ## Current Scope
 
-This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, in-memory recording registration boundary, and a thin HTTP registration endpoint.
+This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, in-memory recording boundaries, storage/upload ports, and thin HTTP endpoints for registration, retrieval, and marking recordings as stored.
 
 No upload handling, storage adapter, SQS worker, database schema, or detection logic has been implemented yet.
 
@@ -38,7 +38,7 @@ Content-Type: application/json
 }
 ```
 
-Successful responses return `201 Created`, a `Location` header such as `/recordings/rec-123`, and the registered metadata. The endpoint currently uses the in-memory repository, so data is not persisted across application restarts.
+Successful responses return `201 Created`, a `Location` header such as `/recordings/rec-123`, and the registered metadata. The endpoint currently uses the in-memory repository, so data is not persisted across application restarts. Blank or missing request fields return `400 Bad Request` with field-level validation errors.
 
 Retrieve registered recording metadata:
 
@@ -60,7 +60,23 @@ Content-Type: application/json
 }
 ```
 
-Successful responses return `200 OK` and the updated recording metadata. This endpoint records that storage has happened; it does not upload files or talk to S3 yet.
+Successful responses return `200 OK` and the updated recording metadata. Blank or missing storage fields return `400 Bad Request` with field-level validation errors. This endpoint records that storage has happened; it does not upload files or talk to S3 yet.
+
+## Recording Storage Boundary
+
+The application layer now has a `RecordingStorage` port and a `StoreRecordingContentService`. This service stores content through the port, then marks the recording as stored using the returned storage reference.
+
+There is still no S3 adapter, upload endpoint, or file-transfer workflow. The port exists so a future storage implementation can be added behind the application boundary.
+
+## Presigned Upload Boundary
+
+The preferred production-like upload direction is direct-to-S3 presigned uploads. The application layer now has:
+
+- `CreateRecordingUploadService`
+- `PresignedRecordingUploadPort`
+- `PresignedRecordingUpload`
+
+This boundary creates recording metadata, asks a port for temporary upload instructions, and returns the recording plus upload target. There is still no AWS SDK integration or HTTP endpoint for this flow yet.
 
 ## Recording Package Structure
 

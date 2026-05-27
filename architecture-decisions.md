@@ -8,6 +8,7 @@ Important project rules:
 - Do not make major technical decisions without confirmation.
 - Do not implement core snoring or apnea detection logic automatically.
 - Keep the project small at first but expandable.
+- Favor production-like, scalable architecture when choosing core boundaries, while still implementing in small confirmed steps.
 - Generate boilerplate only after explicit confirmation: **"Proceed with scaffold."**
 
 ## 1. Project Structure
@@ -448,13 +449,49 @@ Use here:
 
 - Use after local upload flow is stable.
 
+### Upload Path
+
+#### Backend-Mediated Upload
+
+The client uploads audio bytes to the backend, and the backend writes them to storage.
+
+Pros:
+
+- Simpler first implementation.
+- Backend fully controls the write path.
+- Easy to unit test behind a storage port.
+
+Cons:
+
+- API servers handle large audio payloads.
+- Less scalable if the app becomes popular.
+- More bandwidth and timeout pressure on the backend.
+
+#### Direct-to-S3 Presigned Upload
+
+The backend creates recording metadata, chooses the S3 object key, returns a temporary presigned upload URL, and the client uploads audio directly to S3. The backend then verifies the object exists before marking the recording as stored.
+
+Pros:
+
+- More production-like.
+- Scales better because large audio bytes bypass API servers.
+- Keeps file transfer on S3, which is designed for it.
+- Backend still owns metadata, ownership, object keys, and lifecycle status.
+
+Cons:
+
+- More moving parts.
+- Requires presigned URL generation.
+- Requires client-side S3 upload handling.
+- Requires backend verification before trusting upload completion.
+
 ### Recommendation
 
-Start with **S3-compatible storage via LocalStack**, but optionally begin with a local filesystem abstraction for the absolute simplest first step.
+Use **S3-compatible storage via LocalStack** and design the real upload flow around **direct-to-S3 presigned uploads**.
 
-The important design point is to create a `StorageService` interface so the app does not care whether files are local or S3.
+The important design point is to keep storage behind application boundaries so the app can evolve in small steps while still targeting a scalable production-like architecture.
 
-Recommended choice: **Storage abstraction + LocalStack S3**
+Recommended choice: **Presigned S3 upload flow + LocalStack S3 for local development**
 
 ## 7. Message Queue
 
