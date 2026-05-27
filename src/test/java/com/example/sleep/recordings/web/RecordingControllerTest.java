@@ -3,7 +3,12 @@ package com.example.sleep.recordings.web;
 import com.example.sleep.recordings.Recording;
 import com.example.sleep.recordings.RecordingId;
 import com.example.sleep.recordings.StorageObjectReference;
+import com.example.sleep.recordings.application.CompleteRecordingUploadService;
+import com.example.sleep.recordings.application.CreateRecordingUploadService;
 import com.example.sleep.recordings.application.MarkRecordingStoredService;
+import com.example.sleep.recordings.application.PresignedRecordingUpload;
+import com.example.sleep.recordings.application.PresignedRecordingUploadPort;
+import com.example.sleep.recordings.application.RecordingObjectVerifier;
 import com.example.sleep.recordings.application.RegisterRecordingService;
 import com.example.sleep.recordings.infrastructure.InMemoryRecordingRepository;
 import org.junit.jupiter.api.Test;
@@ -11,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -27,6 +33,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RecordingControllerTest {
 
     private static final Instant NOW = Instant.parse("2026-05-26T11:20:00Z");
+    private static final Instant UPLOAD_EXPIRES_AT = Instant.parse("2026-05-26T11:35:00Z");
+    private static final PresignedRecordingUpload UPLOAD = new PresignedRecordingUpload(
+            URI.create("https://example.com/upload/rec-123"),
+            "PUT",
+            new StorageObjectReference("sleep-recordings", "recordings/user-456/rec-123/audio.m4a"),
+            UPLOAD_EXPIRES_AT
+    );
 
     private final InMemoryRecordingRepository repository = new InMemoryRecordingRepository();
     private final RegisterRecordingService service = new RegisterRecordingService(
@@ -37,8 +50,26 @@ class RecordingControllerTest {
             repository,
             Clock.fixed(NOW, ZoneOffset.UTC)
     );
+    private final RecordingObjectVerifierFake verifier = new RecordingObjectVerifierFake(true);
+    private final CompleteRecordingUploadService completeUploadService = new CompleteRecordingUploadService(
+            repository,
+            verifier,
+            Clock.fixed(NOW, ZoneOffset.UTC)
+    );
+    private final PresignedRecordingUploadFake uploadPort = new PresignedRecordingUploadFake(UPLOAD);
+    private final CreateRecordingUploadService createUploadService = new CreateRecordingUploadService(
+            repository,
+            uploadPort,
+            Clock.fixed(NOW, ZoneOffset.UTC)
+    );
     private final MockMvc mockMvc = MockMvcBuilders
-            .standaloneSetup(new RecordingController(service, markStoredService, repository))
+            .standaloneSetup(new RecordingController(
+                    service,
+                    markStoredService,
+                    createUploadService,
+                    completeUploadService,
+                    repository
+            ))
             .setControllerAdvice(new RecordingExceptionHandler())
             .build();
 
@@ -107,6 +138,34 @@ class RecordingControllerTest {
     }
 
     @Test
+    void createsRecordingUploadInstructions() throws Exception {
+        mockMvc.perform(post("/recording-uploads")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "rec-123",
+                                  "ownerId": "user-456",
+                                  "originalFilename": "night-audio.m4a",
+                                  "contentType": "audio/mp4"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", endsWith("/recordings/rec-123")))
+                .andExpect(jsonPath("$.recording.id").value("rec-123"))
+                .andExpect(jsonPath("$.recording.ownerId").value("user-456"))
+                .andExpect(jsonPath("$.recording.status").value("AWAITING_UPLOAD"))
+                .andExpect(jsonPath("$.upload.uploadUrl").value("https://example.com/upload/rec-123"))
+                .andExpect(jsonPath("$.upload.method").value("PUT"))
+                .andExpect(jsonPath("$.upload.storageObject.bucketName").value("sleep-recordings"))
+                .andExpect(jsonPath("$.upload.storageObject.objectKey").value("recordings/user-456/rec-123/audio.m4a"))
+                .andExpect(jsonPath("$.upload.expiresAt").value("2026-05-26T11:35:00Z"));
+
+        assertThat(repository.findById(new RecordingId("rec-123")))
+                .hasValueSatisfying(recording -> assertThat(recording.status().name()).isEqualTo("AWAITING_UPLOAD"));
+        assertThat(uploadPort.recording.id()).isEqualTo(new RecordingId("rec-123"));
+    }
+
+    @Test
     void getsRegisteredRecordingMetadata() throws Exception {
         repository.save(Recording.register(
                 new RecordingId("rec-123"),
@@ -169,6 +228,62 @@ class RecordingControllerTest {
     }
 
     @Test
+    void completesUploadWhenObjectExists() throws Exception {
+        repository.save(Recording.register(
+                new RecordingId("rec-123"),
+                "user-456",
+                "night-audio.m4a",
+                "audio/mp4",
+                NOW
+        ));
+
+        mockMvc.perform(post("/recordings/rec-123/upload-complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bucketName": "sleep-recordings",
+                                  "objectKey": "recordings/user-456/rec-123/audio.m4a"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("rec-123"))
+                .andExpect(jsonPath("$.status").value("STORED"))
+                .andExpect(jsonPath("$.storedAt").value("2026-05-26T11:20:00Z"))
+                .andExpect(jsonPath("$.storageObject.bucketName").value("sleep-recordings"))
+                .andExpect(jsonPath("$.storageObject.objectKey").value("recordings/user-456/rec-123/audio.m4a"));
+
+        assertThat(verifier.storageObject).isEqualTo(new StorageObjectReference(
+                "sleep-recordings",
+                "recordings/user-456/rec-123/audio.m4a"
+        ));
+    }
+
+    @Test
+    void returnsConflictWhenCompletingUploadForMissingObject() throws Exception {
+        repository.save(Recording.register(
+                new RecordingId("rec-123"),
+                "user-456",
+                "night-audio.m4a",
+                "audio/mp4",
+                NOW
+        ));
+        verifier.exists = false;
+
+        mockMvc.perform(post("/recordings/rec-123/upload-complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bucketName": "sleep-recordings",
+                                  "objectKey": "recordings/user-456/rec-123/audio.m4a"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(
+                        "Recording object recordings/user-456/rec-123/audio.m4a does not exist in bucket sleep-recordings"
+                ));
+    }
+
+    @Test
     void returnsBadRequestForInvalidStorageReference() throws Exception {
         repository.save(Recording.register(
                 new RecordingId("rec-123"),
@@ -190,5 +305,37 @@ class RecordingControllerTest {
                 .andExpect(jsonPath("$.message").value("Request validation failed"))
                 .andExpect(jsonPath("$.fieldErrors.bucketName").value("bucketName must not be blank"))
                 .andExpect(jsonPath("$.fieldErrors.objectKey").value("objectKey must not be blank"));
+    }
+
+    private static final class PresignedRecordingUploadFake implements PresignedRecordingUploadPort {
+
+        private final PresignedRecordingUpload upload;
+        private Recording recording;
+
+        private PresignedRecordingUploadFake(PresignedRecordingUpload upload) {
+            this.upload = upload;
+        }
+
+        @Override
+        public PresignedRecordingUpload createUploadFor(Recording recording) {
+            this.recording = recording;
+            return upload;
+        }
+    }
+
+    private static final class RecordingObjectVerifierFake implements RecordingObjectVerifier {
+
+        private boolean exists;
+        private StorageObjectReference storageObject;
+
+        private RecordingObjectVerifierFake(boolean exists) {
+            this.exists = exists;
+        }
+
+        @Override
+        public boolean exists(StorageObjectReference storageObject) {
+            this.storageObject = storageObject;
+            return exists;
+        }
     }
 }

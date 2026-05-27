@@ -1770,3 +1770,222 @@ The working tree intentionally still has uncommitted changes from:
 ### Next Proposed Step
 
 Recommended next step: commit the current work when ready. After that, a narrow implementation step could add a fake/local presigned upload adapter for tests, or add a thin HTTP endpoint that returns presigned upload instructions while still using a fake port.
+
+## 2026-05-27 12:08 BST - Push Checkpoint After Step 11
+
+### User Request
+
+Record that the current work was pushed.
+
+### Findings
+
+- Current branch: `main`.
+- Working tree was clean before this log entry was added.
+- Latest local commit:
+  - `edac534 Add validation and presigned upload boundaries`
+- User confirmed the changes were pushed.
+
+### Included Work In Latest Commit
+
+- Step 9 HTTP request validation.
+- Step 10 recording storage port boundary.
+- Scalability and direct-to-S3 presigned upload architecture decision.
+- Step 11 presigned upload application boundary.
+
+### Commands Run
+
+- `git status --short`
+- `git log --oneline -3`
+- `git branch --show-current`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Files Changed
+
+- Updated `project-log.md` with this push checkpoint.
+
+### Next Proposed Step
+
+Recommended next step: add a thin HTTP endpoint that returns presigned upload instructions, backed by a fake/local presigned upload port for now. Do not add AWS SDK, real S3 signing, PostgreSQL, SQS, or analysis logic yet.
+
+## 2026-05-27 12:18 BST - Step 12: Presigned Upload HTTP Boundary With Fake Port
+
+### User Request
+
+Proceed with the next recommended step: add a thin HTTP endpoint that returns presigned upload instructions, backed by a fake/local presigned upload port.
+
+### Scope
+
+Added a narrow HTTP boundary for the presigned upload flow.
+
+Included:
+
+- `POST /recording-uploads`.
+- Response containing:
+  - Created recording metadata.
+  - Upload URL.
+  - Upload HTTP method.
+  - Storage object reference.
+  - Upload expiry timestamp.
+- Spring wiring for `CreateRecordingUploadService`.
+- Fake/local `PresignedRecordingUploadPort` implementation for now.
+- Controller test for the new endpoint.
+- README documentation for the endpoint.
+
+Intentionally not included:
+
+- No AWS SDK dependency.
+- No real S3 presigned URL generation.
+- No LocalStack S3 adapter yet.
+- No PostgreSQL persistence.
+- No SQS producer or consumer.
+- No audio, snoring, silence, or apnea analysis logic.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/infrastructure/FakePresignedRecordingUploadPort.java`
+- `src/main/java/com/example/sleep/recordings/web/PresignedUploadHttpResponse.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingUploadHttpResponse.java`
+
+### Files Changed
+
+- `src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `README.md`
+- `project-log.md`
+
+### TDD Notes
+
+- Added the controller test for `POST /recording-uploads` first.
+- Ran Maven tests and confirmed the expected red state: `RecordingController` did not accept `CreateRecordingUploadService` or expose the endpoint.
+- Added the endpoint, response DTOs, fake port, and Spring wiring needed for the tests.
+- Ran the full Maven test command again and confirmed green state.
+
+### Modern Java Notes
+
+- `RecordingUploadHttpResponse` and `PresignedUploadHttpResponse` are Java records, used as immutable HTTP response DTOs.
+
+### Commands Run
+
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `sed -n '1,320p' src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `sed -n '1,240p' src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/web/RecordingHttpResponse.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/application/CreateRecordingUploadService.java`
+- `sed -n '1,180p' src/main/java/com/example/sleep/recordings/application/PresignedRecordingUpload.java`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `git status --short`
+- `git diff --stat`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Red-state Maven test run failed as expected before implementation due to the old controller constructor/endpoint shape.
+- Final Maven test command succeeded:
+  - 29 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Next Proposed Step
+
+Recommended next step: commit this small HTTP-boundary step when ready. After that, decide whether to add real LocalStack S3 presigning support or first add upload-complete verification as an application boundary.
+
+## 2026-05-27 12:38 BST - Step 13: Upload Complete Verification Boundary
+
+### User Request
+
+Proceed with the first proposed next step: add an upload-complete verification boundary before real S3 integration.
+
+### Scope
+
+Added an application and HTTP boundary for completing a direct-to-S3 upload after the client reports that upload has finished.
+
+Included:
+
+- `CompleteRecordingUploadCommand`.
+- `CompleteRecordingUploadService`.
+- `RecordingObjectVerifier` port.
+- Fake/local `RecordingObjectVerifier` implementation.
+- `POST /recordings/{id}/upload-complete`.
+- Unit tests for:
+  - Completing upload when the object exists.
+  - Marking the recording as `STORED` after verification succeeds.
+  - Rejecting missing recordings without verification.
+  - Rejecting missing uploaded objects.
+  - Rejecting already stored recordings without verification.
+- Controller tests for:
+  - Successful upload completion.
+  - Conflict when the uploaded object does not exist.
+- README documentation for the upload-complete endpoint.
+
+Intentionally not included:
+
+- No AWS SDK dependency.
+- No real S3 object existence check.
+- No LocalStack S3 adapter yet.
+- No PostgreSQL persistence.
+- No SQS producer or consumer.
+- No audio, snoring, silence, or apnea analysis logic.
+
+### Files Added
+
+- `src/test/java/com/example/sleep/recordings/application/CompleteRecordingUploadServiceTest.java`
+- `src/main/java/com/example/sleep/recordings/application/CompleteRecordingUploadCommand.java`
+- `src/main/java/com/example/sleep/recordings/application/CompleteRecordingUploadService.java`
+- `src/main/java/com/example/sleep/recordings/application/RecordingObjectVerifier.java`
+- `src/main/java/com/example/sleep/recordings/infrastructure/FakeRecordingObjectVerifier.java`
+
+### Files Changed
+
+- `src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `README.md`
+- `project-log.md`
+
+### TDD Notes
+
+- Added `CompleteRecordingUploadServiceTest` first.
+- Ran Maven tests and confirmed the expected red state: the verifier port, command, and service did not exist.
+- Added the minimal application-layer production code.
+- Ran Maven tests and confirmed the application service tests passed.
+- Added controller tests for `POST /recordings/{id}/upload-complete`.
+- Ran Maven tests and confirmed the expected red state: `RecordingController` did not accept `CompleteRecordingUploadService` or expose the endpoint.
+- Added the endpoint, fake verifier, and Spring wiring.
+- Ran the full Maven test command again and confirmed green state.
+
+### Modern Java Notes
+
+- `CompleteRecordingUploadCommand` is a Java record, used as a small immutable command object.
+
+### Commands Run
+
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/application/MarkRecordingStoredService.java`
+- `sed -n '1,300p' src/test/java/com/example/sleep/recordings/application/MarkRecordingStoredServiceTest.java`
+- `sed -n '1,320p' src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `sed -n '1,380p' src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `git status --short`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `git diff --stat`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Red-state Maven test run failed as expected before application implementation due to missing classes.
+- Red-state Maven test run failed as expected before HTTP implementation due to the old controller constructor/endpoint shape.
+- Final Maven test command succeeded:
+  - 35 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Current Uncommitted State
+
+The working tree has uncommitted changes from:
+
+- Step 12 presigned upload HTTP boundary.
+- Step 13 upload-complete verification boundary.
+- This project-log entry.
+
+### Next Proposed Step
+
+Recommended next step: commit the current Step 12 and Step 13 work when ready. After that, the next technical step should be real LocalStack S3 integration for presigned URL generation and object verification.

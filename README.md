@@ -76,7 +76,37 @@ The preferred production-like upload direction is direct-to-S3 presigned uploads
 - `PresignedRecordingUploadPort`
 - `PresignedRecordingUpload`
 
-This boundary creates recording metadata, asks a port for temporary upload instructions, and returns the recording plus upload target. There is still no AWS SDK integration or HTTP endpoint for this flow yet.
+This boundary creates recording metadata, asks a port for temporary upload instructions, and returns the recording plus upload target. There is a thin HTTP endpoint for this flow:
+
+```http
+POST /recording-uploads
+Content-Type: application/json
+
+{
+  "id": "rec-123",
+  "ownerId": "user-456",
+  "originalFilename": "night-audio.m4a",
+  "contentType": "audio/mp4"
+}
+```
+
+Successful responses return `201 Created`, a `Location` header such as `/recordings/rec-123`, the created recording metadata, and an `upload` object containing the temporary upload instructions.
+
+The current upload URL provider is fake/local. There is still no AWS SDK integration or real S3 signing yet.
+
+Complete an upload after the client has uploaded the object:
+
+```http
+POST /recordings/rec-123/upload-complete
+Content-Type: application/json
+
+{
+  "bucketName": "sleep-recordings",
+  "objectKey": "recordings/user-456/rec-123/audio.m4a"
+}
+```
+
+Successful responses return `200 OK` and the updated recording metadata with status `STORED`. The backend checks a `RecordingObjectVerifier` port before marking the recording stored. The current verifier is fake/local and always reports that the object exists.
 
 ## Recording Package Structure
 
