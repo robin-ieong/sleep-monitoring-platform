@@ -751,6 +751,26 @@ Intentionally not included:
 
 - `project-log.md`
 
+## 2026-05-27 15:50 BST - Environment Note: Docker Socket Permission
+
+### Discovery
+
+Docker CLI is installed, but the current shell cannot connect to the Docker daemon socket.
+
+### Command Run
+
+- `docker version`
+
+### Result
+
+- Docker client information printed successfully.
+- Docker server access failed with:
+  - `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`
+
+### Meaning
+
+The issue is not the `sleep_project` directory or the `docker-compose.yml` file. The Compose file exists in the project root. The current Linux user/session does not have permission to access the Docker daemon.
+
 ### TDD Notes
 
 - Added the lifecycle unit tests first.
@@ -1989,3 +2009,147 @@ The working tree has uncommitted changes from:
 ### Next Proposed Step
 
 Recommended next step: commit the current Step 12 and Step 13 work when ready. After that, the next technical step should be real LocalStack S3 integration for presigned URL generation and object verification.
+
+## 2026-05-27 15:34 BST - Step 14: LocalStack S3 Presigned Upload Integration
+
+### User Request
+
+Proceed with real LocalStack S3 integration for presigned URL generation and object verification.
+
+### Scope
+
+Replaced the local-profile fake upload behavior with AWS SDK-backed LocalStack S3 adapters.
+
+Included:
+
+- AWS SDK v2 dependency management and S3/client dependencies.
+- `S3PresignedRecordingUploadPort`:
+  - Generates presigned S3 PUT URLs.
+  - Uses bucket `sleep-recordings`.
+  - Uses object key format `recordings/{ownerId}/{recordingId}/audio`.
+  - Preserves the recording content type in the signed PUT request.
+- `S3RecordingObjectVerifier`:
+  - Uses S3 `HeadObject`.
+  - Returns `false` for S3 not-found responses.
+  - Propagates unexpected S3 errors.
+- Spring `local` profile wiring:
+  - Real S3 presigner.
+  - Real S3 client.
+  - Real presigned-upload port.
+  - Real object verifier.
+- Default profile still uses fake ports for simple app startup and tests.
+- LocalStack image pinned to `localstack/localstack:3.8.1`.
+- Local profile upload expiry property:
+  - `app.storage.presigned-upload-expiry: PT15M`
+- README updated to describe local-profile S3 behavior.
+
+Intentionally not included:
+
+- No production AWS account configuration.
+- No PostgreSQL persistence.
+- No SQS producer or consumer.
+- No audio, snoring, silence, or apnea analysis logic.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/infrastructure/S3PresignedRecordingUploadPort.java`
+- `src/main/java/com/example/sleep/recordings/infrastructure/S3RecordingObjectVerifier.java`
+- `src/test/java/com/example/sleep/recordings/infrastructure/S3PresignedRecordingUploadPortTest.java`
+- `src/test/java/com/example/sleep/recordings/infrastructure/S3RecordingObjectVerifierTest.java`
+
+### Files Changed
+
+- `pom.xml`
+- `docker-compose.yml`
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `src/main/resources/application-local.yml`
+- `README.md`
+- `project-log.md`
+
+### TDD Notes
+
+- Added S3 adapter unit tests first.
+- Ran Maven tests and confirmed the expected red state: the S3 adapter classes did not exist.
+- Added the minimal S3 adapter implementations.
+- Initial adapter tests used Mockito mocks, but Mockito inline mocking could not self-attach in this WSL/JDK environment after the AWS SDK dependency changes.
+- Reworked the S3 adapter tests to use small Java dynamic proxy fakes instead of Mockito.
+- Ran the full Maven test command again and confirmed green state.
+
+### Environment Notes
+
+- Maven initially failed to resolve the AWS SDK BOM in the sandbox due DNS/network restrictions.
+- Retried Maven with approved network access and resolved AWS SDK `2.44.10` dependencies.
+- `localstack/localstack:latest` resolved to LocalStack `2026.5.0`, which exited with license activation error code `55`.
+- Pinned LocalStack to `localstack/localstack:3.8.1`, which runs community edition locally without a license token.
+- Plain sandbox curl could not PUT to the LocalStack presigned URL due socket permission restrictions. Retried the PUT with approved execution and it succeeded.
+
+### Modern Java Notes
+
+- `Duration` is used for the presigned upload expiry (`PT15M`). `java.time.Duration` exists in Java 8, but ISO-8601 duration binding in Spring config is a modern Spring Boot convenience.
+- The tests use Java dynamic proxies for AWS SDK interfaces to avoid relying on Mockito JVM-agent self-attachment.
+
+### Commands Run
+
+- `sed -n '1,220p' src/main/resources/application-local.yml`
+- `sed -n '1,240p' docker/localstack/init/01-create-local-resources.sh`
+- `sed -n '1,260p' pom.xml`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test -DskipTests`
+- `javap ... S3Presigner PresignedPutObjectRequest NoSuchKeyException`
+- `javap ... PutObjectPresignRequest PutObjectRequest`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `docker compose ps`
+- `docker compose up -d`
+- `docker compose ps -a`
+- `docker compose logs --tail=120 localstack`
+- `docker compose up -d localstack`
+- `curl -s http://localhost:4566/_localstack/health`
+- `SPRING_PROFILES_ACTIVE=local MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository spring-boot:run`
+- `curl -s -X POST http://localhost:8080/recording-uploads ...`
+- `curl -s -X PUT "$UPLOAD_URL" ...`
+- `curl -s -X POST http://localhost:8080/recordings/rec-local-s3-1/upload-complete ...`
+- `curl -s -X POST http://localhost:8080/recordings/rec-local-s3-missing/upload-complete ...`
+- `fuser -n tcp 8080`
+- `kill 29338`
+- `git status --short`
+- `git diff --stat`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Final Maven test command succeeded:
+  - 40 tests run.
+  - 0 failures.
+  - 0 errors.
+- LocalStack health endpoint reported:
+  - S3 running.
+  - SQS running.
+  - Community edition.
+  - Version `3.8.1`.
+- Started the Spring Boot app with `SPRING_PROFILES_ACTIVE=local`.
+- `POST /recording-uploads` returned `201 Created` and a LocalStack S3 presigned PUT URL.
+- PUT of test audio bytes to the returned presigned URL succeeded with HTTP `200`.
+- `POST /recordings/rec-local-s3-1/upload-complete` returned HTTP `200` and status `STORED`.
+- Completing upload for a recording whose object was not PUT to S3 returned HTTP `409`.
+- Spring Boot dev server was stopped after verification.
+- Docker Compose services remain running:
+  - `sleep-localstack`
+  - `sleep-postgres`
+
+### Next Proposed Step
+
+Recommended next step: commit the LocalStack S3 integration. After that, the next technical milestone should be PostgreSQL/Flyway persistence for recording metadata, so lifecycle state survives application restarts.
+
+## 2026-05-27 15:45 BST - Working Agreement: Explain Linux Commands
+
+### Scope
+
+Documented the user's preference for Linux command explanations during repository work.
+
+### Decision
+
+- Before running Linux commands, explain what each command does and why it is being run.
+- Keep explanations concise and practical so the user can learn the command while following the work.
+
+### Files Changed
+
+- `project-log.md`

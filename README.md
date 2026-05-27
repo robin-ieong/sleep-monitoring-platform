@@ -18,9 +18,9 @@ The platform will accept sleep audio recordings, store them, process them asynch
 
 ## Current Scope
 
-This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, in-memory recording boundaries, storage/upload ports, and thin HTTP endpoints for registration, retrieval, and marking recordings as stored.
+This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, in-memory recording boundaries, storage/upload ports, thin HTTP endpoints, and LocalStack S3 integration for presigned upload URLs and object verification.
 
-No upload handling, storage adapter, SQS worker, database schema, or detection logic has been implemented yet.
+No SQS worker, database schema, or detection logic has been implemented yet.
 
 ## Recording Registration Endpoint
 
@@ -60,13 +60,13 @@ Content-Type: application/json
 }
 ```
 
-Successful responses return `200 OK` and the updated recording metadata. Blank or missing storage fields return `400 Bad Request` with field-level validation errors. This endpoint records that storage has happened; it does not upload files or talk to S3 yet.
+Successful responses return `200 OK` and the updated recording metadata. Blank or missing storage fields return `400 Bad Request` with field-level validation errors. This endpoint records that storage has happened; it is mainly kept as a low-level lifecycle boundary while the preferred direct-to-S3 flow evolves.
 
 ## Recording Storage Boundary
 
 The application layer now has a `RecordingStorage` port and a `StoreRecordingContentService`. This service stores content through the port, then marks the recording as stored using the returned storage reference.
 
-There is still no S3 adapter, upload endpoint, or file-transfer workflow. The port exists so a future storage implementation can be added behind the application boundary.
+The preferred real upload path is the presigned upload flow below. This older backend-byte-storage boundary is still present but is not wired to an HTTP file-upload endpoint.
 
 ## Presigned Upload Boundary
 
@@ -92,7 +92,7 @@ Content-Type: application/json
 
 Successful responses return `201 Created`, a `Location` header such as `/recordings/rec-123`, the created recording metadata, and an `upload` object containing the temporary upload instructions.
 
-The current upload URL provider is fake/local. There is still no AWS SDK integration or real S3 signing yet.
+With the default profile, this flow uses fake local adapters. With the `local` profile, the app uses the AWS SDK against LocalStack S3 to generate a real presigned PUT URL.
 
 Complete an upload after the client has uploaded the object:
 
@@ -106,7 +106,7 @@ Content-Type: application/json
 }
 ```
 
-Successful responses return `200 OK` and the updated recording metadata with status `STORED`. The backend checks a `RecordingObjectVerifier` port before marking the recording stored. The current verifier is fake/local and always reports that the object exists.
+Successful responses return `200 OK` and the updated recording metadata with status `STORED`. The backend checks a `RecordingObjectVerifier` port before marking the recording stored. With the `local` profile, this uses LocalStack S3 `HeadObject`; with the default profile, it uses a fake verifier.
 
 ## Recording Package Structure
 
@@ -182,6 +182,8 @@ LocalStack is configured for:
 - S3 bucket: `sleep-recordings`
 - SQS queue: `sleep-recording-analysis`
 - AWS region: `eu-west-2`
+
+The Compose file pins LocalStack to `localstack/localstack:3.8.1` because `latest` resolved to a 2026 image that required a LocalStack license token.
 
 PostgreSQL is configured for:
 

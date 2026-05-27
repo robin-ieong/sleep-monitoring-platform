@@ -4,6 +4,7 @@ app:
     endpoint: http://localhost:4566
   storage:
     recordings-bucket: sleep-recordings
+    presigned-upload-expiry: PT15M
   queue:
     recording-analysis-queue: sleep-recording-analysis
 
