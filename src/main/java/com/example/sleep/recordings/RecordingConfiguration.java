@@ -10,12 +10,14 @@ import com.example.sleep.recordings.application.RegisterRecordingService;
 import com.example.sleep.recordings.infrastructure.FakePresignedRecordingUploadPort;
 import com.example.sleep.recordings.infrastructure.FakeRecordingObjectVerifier;
 import com.example.sleep.recordings.infrastructure.InMemoryRecordingRepository;
+import com.example.sleep.recordings.infrastructure.JdbcRecordingRepository;
 import com.example.sleep.recordings.infrastructure.S3PresignedRecordingUploadPort;
 import com.example.sleep.recordings.infrastructure.S3RecordingObjectVerifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.core.JdbcTemplate;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
@@ -32,8 +34,15 @@ import java.time.Duration;
 public class RecordingConfiguration {
 
     @Bean
+    @Profile("!local")
     RecordingRepository recordingRepository() {
         return new InMemoryRecordingRepository();
+    }
+
+    @Bean
+    @Profile("local")
+    RecordingRepository jdbcRecordingRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcRecordingRepository(jdbcTemplate);
     }
 
     @Bean

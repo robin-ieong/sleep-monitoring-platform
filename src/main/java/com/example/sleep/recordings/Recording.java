@@ -74,6 +74,32 @@ public final class Recording {
         );
     }
 
+    public static Recording rehydrate(
+            RecordingId id,
+            String ownerId,
+            String originalFilename,
+            String contentType,
+            RecordingStatus status,
+            Instant registeredAt,
+            Instant storedAt,
+            StorageObjectReference storageObject,
+            Instant analysisRequestedAt,
+            Instant analysisCompletedAt
+    ) {
+        return new Recording(
+                id,
+                ownerId,
+                originalFilename,
+                contentType,
+                status,
+                registeredAt,
+                storedAt,
+                storageObject,
+                analysisRequestedAt,
+                analysisCompletedAt
+        );
+    }
+
     public Recording markStored(StorageObjectReference storageObject, Instant storedAt) {
         requireStatus(RecordingStatus.AWAITING_UPLOAD, "be awaiting upload before it can be marked stored");
         if (storageObject == null) {

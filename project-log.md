@@ -771,6 +771,123 @@ Docker CLI is installed, but the current shell cannot connect to the Docker daem
 
 The issue is not the `sleep_project` directory or the `docker-compose.yml` file. The Compose file exists in the project root. The current Linux user/session does not have permission to access the Docker daemon.
 
+## 2026-05-27 16:49 BST - Step 15: PostgreSQL Recording Repository Started
+
+### Scope
+
+Started the persistence milestone for recording metadata/status.
+
+The goal of this step is to move recording metadata away from process memory for the `local` profile, so recordings and lifecycle status can survive backend restarts when running with the local production-like stack.
+
+### Design Decision
+
+- Keep the existing `RecordingRepository` application port.
+- Add a JDBC-based adapter for the `local` profile.
+- Keep the in-memory adapter for the default profile so simple tests and default local runs remain lightweight.
+- Use Flyway migrations to create database schema instead of manually creating tables.
+
+### Files Changed
+
+- `pom.xml`
+- `src/main/java/com/example/sleep/recordings/Recording.java`
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `src/main/java/com/example/sleep/recordings/infrastructure/JdbcRecordingRepository.java`
+- `src/main/resources/db/migration/V1__create_recordings_table.sql`
+- `src/test/java/com/example/sleep/recordings/infrastructure/JdbcRecordingRepositoryTest.java`
+- `project-log.md`
+
+### Implementation Notes
+
+- Added database dependencies:
+  - Spring JDBC starter.
+  - Spring Boot Flyway starter.
+  - Flyway PostgreSQL support.
+  - PostgreSQL JDBC driver.
+  - H2 for repository tests.
+- Added Flyway migration `V1__create_recordings_table.sql`.
+- Added `JdbcRecordingRepository`.
+- Added `Recording.rehydrate(...)` factory for rebuilding a domain object from database rows.
+- Updated `RecordingConfiguration`:
+  - default profile uses `InMemoryRecordingRepository`;
+  - `local` profile uses `JdbcRecordingRepository`.
+
+### TDD Notes
+
+- Wrote `JdbcRecordingRepositoryTest` before adding the production repository.
+- First expected red state:
+  - `JdbcRecordingRepository` did not exist.
+- Then added the repository implementation.
+- Test initially failed because H2 in-memory database was closed after Flyway migration.
+- Fixed test JDBC URL with `DB_CLOSE_DELAY=-1`.
+- Focused repository test then passed.
+
+### Flyway Startup Discovery
+
+- The app initially started with the `local` profile, but `POST /recording-uploads` returned HTTP `500`.
+- Server logs showed:
+  - `ERROR: relation "recordings" does not exist`
+- Root cause:
+  - `flyway-core` alone was not enough for Spring Boot 4 to auto-run migrations on app startup.
+- Confirmed `spring-boot-starter-flyway` exists for Spring Boot `4.0.6`.
+- Added `spring-boot-starter-flyway`.
+- Full test suite then showed Flyway running during Spring Boot context startup.
+
+### Commands Run
+
+- `git status --short`
+- `rg --files`
+- `sed -n '1,220p' ...`
+- `sed -n '1,260p' ...`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository -Dtest=JdbcRecordingRepositoryTest test`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `docker compose ps postgres`
+- `docker compose ps localstack`
+- `fuser -n tcp 8080`
+- `SPRING_PROFILES_ACTIVE=local MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository spring-boot:run`
+- `curl -s -X POST http://localhost:8080/recording-uploads ...`
+- `jar tf .m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.0.6/spring-boot-autoconfigure-4.0.6.jar | grep Flyway`
+- `find .m2/repository/org/springframework/boot -iname '*flyway*'`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository dependency:get -Dartifact=org.springframework.boot:spring-boot-starter-flyway:4.0.6`
+- `kill 53940`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Focused repository test passed:
+  - `JdbcRecordingRepositoryTest`
+  - 4 tests run.
+  - 0 failures.
+  - 0 errors.
+- Full Maven test suite passed after adding the Flyway starter:
+  - 44 tests run.
+  - 0 failures.
+  - 0 errors.
+- Docker checks confirmed:
+  - `sleep-postgres` was up and healthy on port `5432`.
+  - `sleep-localstack` was up and healthy on port `4566`.
+- Spring Boot context test logs showed Flyway creating and applying migration `V1`.
+
+### Incomplete Verification
+
+Final local-profile manual verification against the real Postgres container was started but interrupted due time.
+
+The next session should:
+
+- Start the app with `SPRING_PROFILES_ACTIVE=local`.
+- Confirm Flyway applies `V1` to the Docker Postgres database.
+- Call `POST /recording-uploads`.
+- Confirm the recording metadata is stored in Postgres.
+- Optionally complete the S3 upload flow again and confirm status changes to `STORED`.
+
+### Modern Java Notes
+
+- `Recording.rehydrate(...)` keeps the immutable domain model intact while allowing JDBC persistence to rebuild saved state.
+- Text blocks (`"""`) are used in `JdbcRecordingRepository` for multi-line SQL. This is newer than Java 8 and keeps SQL readable without manual string concatenation.
+
+### Next Proposed Step
+
+Resume with local-profile Postgres verification, then commit the PostgreSQL/Flyway persistence changes once verified.
+
 ### TDD Notes
 
 - Added the lifecycle unit tests first.
@@ -2153,3 +2270,109 @@ Documented the user's preference for Linux command explanations during repositor
 ### Files Changed
 
 - `project-log.md`
+
+## 2026-05-28 11:33 BST - Step 15 Local PostgreSQL Verification Completed
+
+### User Request
+
+Read `AGENTS.md` and `project-log.md`, then continue from the handoff.
+
+### Scope
+
+Resumed the incomplete Step 15 verification for PostgreSQL/Flyway-backed recording persistence in the `local` profile.
+
+### Findings
+
+- The working tree contained the expected Step 15 changes:
+  - JDBC recording repository.
+  - Flyway migration for the `recordings` table.
+  - `local` profile repository wiring.
+  - database dependencies in `pom.xml`.
+- Full Maven tests passed before runtime verification:
+  - 44 tests run.
+  - 0 failures.
+  - 0 errors.
+- Docker Compose services were not running at first.
+- A stale Docker Compose network/container state caused `docker compose up -d` to fail with:
+  - `failed to create endpoint sleep-localstack on network sleep_project_default: network ... does not exist`
+- Fixed the local Docker state with `docker compose down` without `-v`, then `docker compose up -d`.
+- Docker Compose services then started healthy:
+  - `sleep-localstack`
+  - `sleep-postgres`
+- LocalStack health confirmed:
+  - S3 running.
+  - SQS running.
+  - Community edition.
+  - Version `3.8.1`.
+
+### Runtime Verification
+
+- Started the app with `SPRING_PROFILES_ACTIVE=local`.
+- First sandboxed app start failed when Flyway tried to connect to Postgres:
+  - `java.net.SocketException: Operation not permitted`
+- Retried the app start with approved execution permissions.
+- Flyway connected to Docker Postgres and applied migration `V1`.
+- `POST /recording-uploads` returned HTTP `201` and a LocalStack S3 presigned PUT URL.
+- PUT of test bytes to the presigned LocalStack S3 URL returned HTTP `200`.
+- Initial `POST /recordings/rec-local-pg-1/upload-complete` without a body returned HTTP `400`, because the endpoint requires a storage reference body.
+- Retried upload completion with:
+
+```json
+{"bucketName":"sleep-recordings","objectKey":"recordings/user-456/rec-local-pg-1/audio"}
+```
+
+- Upload completion then returned HTTP `200` with status `STORED`.
+- Direct Postgres query confirmed the persisted row:
+  - `id`: `rec-local-pg-1`
+  - `owner_id`: `user-456`
+  - `status`: `STORED`
+  - `storage_bucket`: `sleep-recordings`
+  - `storage_key`: `recordings/user-456/rec-local-pg-1/audio`
+- Restarted the app with `SPRING_PROFILES_ACTIVE=local`.
+- On restart, Flyway reported schema version `1` and no migration needed.
+- `GET /recordings/rec-local-pg-1` after restart returned HTTP `200` with status `STORED`, confirming recording lifecycle state survives backend restarts.
+- The Spring Boot dev server was stopped after verification.
+
+### Commands Run
+
+- `git status --short`
+- `git log --oneline -5`
+- `rg --files src/main/java src/main/resources src/test/java | sort`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/infrastructure/JdbcRecordingRepository.java`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `sed -n '1,220p' src/main/resources/db/migration/V1__create_recordings_table.sql`
+- `sed -n '1,220p' src/main/resources/application-local.yml`
+- `sed -n '1,260p' src/test/java/com/example/sleep/recordings/infrastructure/JdbcRecordingRepositoryTest.java`
+- `sed -n '1,280p' pom.xml`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `docker compose ps`
+- `curl -s http://localhost:4566/_localstack/health`
+- `docker compose up -d`
+- `docker compose ps -a`
+- `docker network ls`
+- `docker network inspect sleep_project_default`
+- `docker compose down`
+- `SPRING_PROFILES_ACTIVE=local MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository spring-boot:run`
+- `curl -i -s -X POST http://localhost:8080/recording-uploads ...`
+- `curl -i -s -X PUT ...`
+- `curl -i -s -X POST http://localhost:8080/recordings/rec-local-pg-1/upload-complete ...`
+- `curl -i -s http://localhost:8080/recordings/rec-local-pg-1`
+- `docker compose exec -T postgres psql -U sleep_app -d sleep_monitoring -c "SELECT ..."`
+- `ps -ef | rg 'SleepMonitoringApplication|spring-boot:run'`
+- `kill 7204 7017`
+- `kill 14025 13837`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Environment Notes
+
+- Docker daemon access still requires approved execution from this tool session.
+- Java socket access to Postgres from a sandboxed Spring Boot run failed; approved execution was required for local-profile runtime verification.
+- The full test suite emitted a Mockito self-attach warning during the Spring context test. The warning did not fail the build, but a future dependency/tooling cleanup may need to configure Mockito as a Java agent.
+
+### Files Changed
+
+- Updated `project-log.md` with this verification entry.
+
+### Next Proposed Step
+
+Commit the PostgreSQL/Flyway persistence work now that local-profile runtime verification is complete. After that, the next technical milestone should be confirmed before implementation.
