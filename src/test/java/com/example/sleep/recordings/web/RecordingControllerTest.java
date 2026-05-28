@@ -8,7 +8,9 @@ import com.example.sleep.recordings.application.CreateRecordingUploadService;
 import com.example.sleep.recordings.application.MarkRecordingStoredService;
 import com.example.sleep.recordings.application.PresignedRecordingUpload;
 import com.example.sleep.recordings.application.PresignedRecordingUploadPort;
+import com.example.sleep.recordings.application.RecordingAnalysisQueue;
 import com.example.sleep.recordings.application.RecordingObjectVerifier;
+import com.example.sleep.recordings.application.RequestRecordingAnalysisService;
 import com.example.sleep.recordings.application.RegisterRecordingService;
 import com.example.sleep.recordings.infrastructure.InMemoryRecordingRepository;
 import org.junit.jupiter.api.Test;
@@ -56,6 +58,12 @@ class RecordingControllerTest {
             verifier,
             Clock.fixed(NOW, ZoneOffset.UTC)
     );
+    private final RecordingAnalysisQueueFake analysisQueue = new RecordingAnalysisQueueFake();
+    private final RequestRecordingAnalysisService requestAnalysisService = new RequestRecordingAnalysisService(
+            repository,
+            analysisQueue,
+            Clock.fixed(NOW, ZoneOffset.UTC)
+    );
     private final PresignedRecordingUploadFake uploadPort = new PresignedRecordingUploadFake(UPLOAD);
     private final CreateRecordingUploadService createUploadService = new CreateRecordingUploadService(
             repository,
@@ -68,6 +76,7 @@ class RecordingControllerTest {
                     markStoredService,
                     createUploadService,
                     completeUploadService,
+                    requestAnalysisService,
                     repository
             ))
             .setControllerAdvice(new RecordingExceptionHandler())
@@ -307,6 +316,28 @@ class RecordingControllerTest {
                 .andExpect(jsonPath("$.fieldErrors.objectKey").value("objectKey must not be blank"));
     }
 
+    @Test
+    void requestsRecordingAnalysis() throws Exception {
+        repository.save(Recording.register(
+                        new RecordingId("rec-123"),
+                        "user-456",
+                        "night-audio.m4a",
+                        "audio/mp4",
+                        NOW
+                )
+                .markStored(
+                        new StorageObjectReference("sleep-recordings", "recordings/user-456/rec-123/audio.m4a"),
+                        NOW
+                ));
+
+        mockMvc.perform(post("/recordings/rec-123/analysis-requests"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.id").value("rec-123"))
+                .andExpect(jsonPath("$.status").value("ANALYSIS_REQUESTED"));
+
+        assertThat(analysisQueue.recording.id()).isEqualTo(new RecordingId("rec-123"));
+    }
+
     private static final class PresignedRecordingUploadFake implements PresignedRecordingUploadPort {
 
         private final PresignedRecordingUpload upload;
@@ -336,6 +367,16 @@ class RecordingControllerTest {
         public boolean exists(StorageObjectReference storageObject) {
             this.storageObject = storageObject;
             return exists;
+        }
+    }
+
+    private static final class RecordingAnalysisQueueFake implements RecordingAnalysisQueue {
+
+        private Recording recording;
+
+        @Override
+        public void enqueueAnalysis(Recording recording) {
+            this.recording = recording;
         }
     }
 }

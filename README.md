@@ -18,9 +18,9 @@ The platform will accept sleep audio recordings, store them, process them asynch
 
 ## Current Scope
 
-This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, in-memory recording boundaries, storage/upload ports, thin HTTP endpoints, and LocalStack S3 integration for presigned upload URLs and object verification.
+This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, recording persistence, storage/upload ports, thin HTTP endpoints, LocalStack S3 integration for presigned upload URLs and object verification, and a LocalStack SQS boundary for future analysis jobs.
 
-No SQS worker, database schema, or detection logic has been implemented yet.
+No SQS worker or detection logic has been implemented yet.
 
 ## Recording Registration Endpoint
 
@@ -108,6 +108,14 @@ Content-Type: application/json
 
 Successful responses return `200 OK` and the updated recording metadata with status `STORED`. The backend checks a `RecordingObjectVerifier` port before marking the recording stored. With the `local` profile, this uses LocalStack S3 `HeadObject`; with the default profile, it uses a fake verifier.
 
+Request analysis for a stored recording:
+
+```http
+POST /recordings/rec-123/analysis-requests
+```
+
+Successful responses return `202 Accepted` and the updated recording metadata with status `ANALYSIS_REQUESTED`. The application persists the lifecycle transition and enqueues a small message for future analysis work. With the `local` profile, this uses LocalStack SQS; with the default profile, it uses a fake queue adapter.
+
 ## Recording Package Structure
 
 The `recordings` module is split by responsibility:
@@ -116,6 +124,8 @@ The `recordings` module is split by responsibility:
 - `recordings.application`: application services, commands, and repository port.
 - `recordings.web`: Spring MVC controllers and HTTP DTOs.
 - `recordings.infrastructure`: current in-memory repository implementation.
+
+With the default profile, the app uses in-memory/fake adapters for lightweight startup and tests. With the `local` profile, recording metadata is persisted in PostgreSQL, S3 upload behavior uses LocalStack S3, and analysis requests are queued in LocalStack SQS.
 
 ## Project Rules
 

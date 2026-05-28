@@ -4,15 +4,19 @@ import com.example.sleep.recordings.application.CompleteRecordingUploadService;
 import com.example.sleep.recordings.application.CreateRecordingUploadService;
 import com.example.sleep.recordings.application.MarkRecordingStoredService;
 import com.example.sleep.recordings.application.PresignedRecordingUploadPort;
+import com.example.sleep.recordings.application.RecordingAnalysisQueue;
 import com.example.sleep.recordings.application.RecordingObjectVerifier;
 import com.example.sleep.recordings.application.RecordingRepository;
+import com.example.sleep.recordings.application.RequestRecordingAnalysisService;
 import com.example.sleep.recordings.application.RegisterRecordingService;
 import com.example.sleep.recordings.infrastructure.FakePresignedRecordingUploadPort;
+import com.example.sleep.recordings.infrastructure.FakeRecordingAnalysisQueue;
 import com.example.sleep.recordings.infrastructure.FakeRecordingObjectVerifier;
 import com.example.sleep.recordings.infrastructure.InMemoryRecordingRepository;
 import com.example.sleep.recordings.infrastructure.JdbcRecordingRepository;
 import com.example.sleep.recordings.infrastructure.S3PresignedRecordingUploadPort;
 import com.example.sleep.recordings.infrastructure.S3RecordingObjectVerifier;
+import com.example.sleep.recordings.infrastructure.SqsRecordingAnalysisQueue;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,6 +29,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.sqs.SqsClient;
 
 import java.net.URI;
 import java.time.Clock;
@@ -103,6 +108,30 @@ public class RecordingConfiguration {
     }
 
     @Bean
+    @Profile("!local")
+    RecordingAnalysisQueue recordingAnalysisQueue() {
+        return new FakeRecordingAnalysisQueue();
+    }
+
+    @Bean
+    @Profile("local")
+    RecordingAnalysisQueue sqsRecordingAnalysisQueue(
+            SqsClient sqsClient,
+            @Value("${app.queue.recording-analysis-queue-url}") String queueUrl
+    ) {
+        return new SqsRecordingAnalysisQueue(sqsClient, queueUrl);
+    }
+
+    @Bean
+    RequestRecordingAnalysisService requestRecordingAnalysisService(
+            RecordingRepository repository,
+            RecordingAnalysisQueue queue,
+            Clock clock
+    ) {
+        return new RequestRecordingAnalysisService(repository, queue, clock);
+    }
+
+    @Bean
     Clock clock() {
         return Clock.systemUTC();
     }
@@ -133,6 +162,20 @@ public class RecordingConfiguration {
                 .endpointOverride(endpoint)
                 .credentialsProvider(localStackCredentials())
                 .serviceConfiguration(s3Configuration())
+                .build();
+    }
+
+    @Bean
+    @Profile("local")
+    SqsClient sqsClient(
+            @Value("${app.aws.region}") String region,
+            @Value("${app.aws.endpoint}") URI endpoint
+    ) {
+        return SqsClient.builder()
+                .region(Region.of(region))
+                .endpointOverride(endpoint)
+                .credentialsProvider(localStackCredentials())
+                .httpClient(UrlConnectionHttpClient.create())
                 .build();
     }
 

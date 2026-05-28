@@ -11,6 +11,8 @@ import com.example.sleep.recordings.application.CreateRecordingUploadService;
 import com.example.sleep.recordings.application.MarkRecordingStoredCommand;
 import com.example.sleep.recordings.application.MarkRecordingStoredService;
 import com.example.sleep.recordings.application.RecordingRepository;
+import com.example.sleep.recordings.application.RequestRecordingAnalysisCommand;
+import com.example.sleep.recordings.application.RequestRecordingAnalysisService;
 import com.example.sleep.recordings.application.RegisterRecordingService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +32,7 @@ public class RecordingController {
     private final MarkRecordingStoredService markStoredService;
     private final CreateRecordingUploadService createUploadService;
     private final CompleteRecordingUploadService completeUploadService;
+    private final RequestRecordingAnalysisService requestAnalysisService;
     private final RecordingRepository repository;
 
     public RecordingController(
@@ -37,6 +40,7 @@ public class RecordingController {
             MarkRecordingStoredService markStoredService,
             CreateRecordingUploadService createUploadService,
             CompleteRecordingUploadService completeUploadService,
+            RequestRecordingAnalysisService requestAnalysisService,
             RecordingRepository repository
     ) {
         if (service == null) {
@@ -51,6 +55,9 @@ public class RecordingController {
         if (completeUploadService == null) {
             throw new IllegalArgumentException("completeUploadService must not be null");
         }
+        if (requestAnalysisService == null) {
+            throw new IllegalArgumentException("requestAnalysisService must not be null");
+        }
         if (repository == null) {
             throw new IllegalArgumentException("repository must not be null");
         }
@@ -58,6 +65,7 @@ public class RecordingController {
         this.markStoredService = markStoredService;
         this.createUploadService = createUploadService;
         this.completeUploadService = completeUploadService;
+        this.requestAnalysisService = requestAnalysisService;
         this.repository = repository;
     }
 
@@ -117,5 +125,14 @@ public class RecordingController {
         ));
 
         return ResponseEntity.ok(RecordingHttpResponse.from(recording));
+    }
+
+    @PostMapping("/recordings/{id}/analysis-requests")
+    ResponseEntity<RecordingHttpResponse> requestAnalysis(@PathVariable String id) {
+        Recording recording = requestAnalysisService.requestAnalysis(new RequestRecordingAnalysisCommand(
+                new RecordingId(id)
+        ));
+
+        return ResponseEntity.accepted().body(RecordingHttpResponse.from(recording));
     }
 }

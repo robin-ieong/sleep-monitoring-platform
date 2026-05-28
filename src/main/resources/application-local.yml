@@ -7,6 +7,7 @@ app:
     presigned-upload-expiry: PT15M
   queue:
     recording-analysis-queue: sleep-recording-analysis
+    recording-analysis-queue-url: http://localhost:4566/000000000000/sleep-recording-analysis
 
 spring:
   datasource:

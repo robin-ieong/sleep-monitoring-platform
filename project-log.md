@@ -2376,3 +2376,167 @@ Resumed the incomplete Step 15 verification for PostgreSQL/Flyway-backed recordi
 ### Next Proposed Step
 
 Commit the PostgreSQL/Flyway persistence work now that local-profile runtime verification is complete. After that, the next technical milestone should be confirmed before implementation.
+
+## 2026-05-28 12:14 BST - Push Checkpoint After PostgreSQL Persistence
+
+### User Request
+
+Record that the PostgreSQL persistence changes were pushed, then identify the next step.
+
+### Findings
+
+- Current branch: `main`.
+- Working tree was clean before this log entry was added.
+- Latest local commit:
+  - `de76009 Add PostgreSQL recording persistence`
+- User confirmed the changes were pushed.
+
+### Commands Run
+
+- `git status --short`
+- `git log --oneline -3`
+- `git branch --show-current`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Files Changed
+
+- Updated `project-log.md` with this push checkpoint.
+
+### Next Proposed Step
+
+Recommended next technical step: add an analysis-job queue boundary using SQS, still without implementing snoring/apnea detection logic. The narrow scope should be to enqueue a recording for future analysis after it is stored, persist the lifecycle transition, and test the application behavior first.
+
+## 2026-05-28 14:54 BST - Step 16: Analysis Request SQS Boundary
+
+### User Request
+
+Proceed with the next step after discussing why SQS is a better fit than Kafka or RabbitMQ for the current job-queue boundary.
+
+### Scope
+
+Added a narrow application and HTTP boundary for requesting future recording analysis.
+
+Included:
+
+- `RecordingAnalysisQueue` application port.
+- `RequestRecordingAnalysisCommand`.
+- `RequestRecordingAnalysisService`.
+- `FakeRecordingAnalysisQueue` for the default profile.
+- `SqsRecordingAnalysisQueue` for the `local` profile.
+- AWS SDK SQS dependency.
+- Local profile SQS client wiring and queue URL configuration.
+- `POST /recordings/{id}/analysis-requests`.
+- Tests for:
+  - requesting analysis for a stored recording;
+  - persisting `ANALYSIS_REQUESTED`;
+  - enqueueing the analysis message;
+  - rejecting missing recordings;
+  - rejecting recordings that are not yet stored;
+  - avoiding duplicate queueing for recordings already in analysis-requested state;
+  - HTTP `202 Accepted` response;
+  - SQS adapter `SendMessageRequest` shape.
+
+Intentionally not included:
+
+- No SQS worker.
+- No snoring, apnea, silence, or audio analysis logic.
+- No result schema.
+- No retry/dead-letter queue policy yet.
+
+### TDD Notes
+
+- Added `RequestRecordingAnalysisServiceTest`, `RecordingControllerTest` coverage, and `SqsRecordingAnalysisQueueTest` before production code.
+- Ran Maven tests and confirmed the expected red state:
+  - missing application service/command/port;
+  - missing SQS adapter;
+  - missing AWS SDK SQS dependency.
+- Added the minimal production code and wiring needed for the tests.
+- Ran the full Maven test suite again and confirmed green state.
+
+### Runtime Verification
+
+- Docker Compose services were already running and healthy:
+  - `sleep-localstack`
+  - `sleep-postgres`
+- LocalStack health reported S3 and SQS running.
+- Started the Spring Boot app with `SPRING_PROFILES_ACTIVE=local`.
+- Created a recording upload with `POST /recording-uploads`.
+- Uploaded test bytes to the returned LocalStack S3 presigned URL.
+- Completed upload with `POST /recordings/rec-local-sqs-1/upload-complete`.
+- Requested analysis with `POST /recordings/rec-local-sqs-1/analysis-requests`.
+- The endpoint returned HTTP `202` and status `ANALYSIS_REQUESTED`.
+- Direct Postgres query confirmed:
+  - `id`: `rec-local-sqs-1`
+  - `status`: `ANALYSIS_REQUESTED`
+  - `analysis_requested_at`: populated.
+- LocalStack SQS receive-message confirmed message body:
+
+```json
+{"recordingId":"rec-local-sqs-1","status":"ANALYSIS_REQUESTED"}
+```
+
+- The Spring Boot dev server was stopped after verification.
+
+### Environment Notes
+
+- The first Maven test run after adding `software.amazon.awssdk:sqs` failed because the dependency was not in the project-local Maven cache and sandbox DNS/network access is restricted.
+- Reran the Maven test command with approved network access so Maven could download the AWS SDK SQS artifacts.
+- Docker and host process inspection still required approved execution from this tool session.
+
+### Modern Java Notes
+
+- `RequestRecordingAnalysisCommand` is a Java record. Records are newer than Java 8 and are useful here for small immutable command objects.
+- The SQS adapter currently builds a tiny JSON message manually because the message body only contains controlled scalar fields. If queue payloads grow, prefer a structured JSON serializer instead of expanding manual string construction.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/application/RecordingAnalysisQueue.java`
+- `src/main/java/com/example/sleep/recordings/application/RequestRecordingAnalysisCommand.java`
+- `src/main/java/com/example/sleep/recordings/application/RequestRecordingAnalysisService.java`
+- `src/main/java/com/example/sleep/recordings/infrastructure/FakeRecordingAnalysisQueue.java`
+- `src/main/java/com/example/sleep/recordings/infrastructure/SqsRecordingAnalysisQueue.java`
+- `src/test/java/com/example/sleep/recordings/application/RequestRecordingAnalysisServiceTest.java`
+- `src/test/java/com/example/sleep/recordings/infrastructure/SqsRecordingAnalysisQueueTest.java`
+
+### Files Changed
+
+- `pom.xml`
+- `README.md`
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `src/main/resources/application-local.yml`
+- `src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `project-log.md`
+
+### Commands Run
+
+- `git status --short`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/Recording.java`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `sed -n '1,320p' src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `rg -n "Analysis|analysis|ANALYSIS" src/main/java src/test/java README.md pom.xml`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `docker compose ps`
+- `curl -s http://localhost:4566/_localstack/health`
+- `SPRING_PROFILES_ACTIVE=local MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository spring-boot:run`
+- `curl -i -s -X POST http://localhost:8080/recording-uploads ...`
+- `curl -i -s -X PUT ...`
+- `curl -i -s -X POST http://localhost:8080/recordings/rec-local-sqs-1/upload-complete ...`
+- `curl -i -s -X POST http://localhost:8080/recordings/rec-local-sqs-1/analysis-requests`
+- `docker compose exec -T localstack awslocal sqs receive-message ...`
+- `docker compose exec -T postgres psql -U sleep_app -d sleep_monitoring -c "SELECT ..."`
+- `ps -ef | rg 'SleepMonitoringApplication|spring-boot:run'`
+- `kill 65289 65102`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Final Maven test command succeeded:
+  - 50 tests run.
+  - 0 failures.
+  - 0 errors.
+- Local-profile manual verification succeeded against Docker Postgres, LocalStack S3, and LocalStack SQS.
+
+### Next Proposed Step
+
+Review and commit Step 16. After that, a sensible next milestone would be an analysis-worker skeleton that consumes SQS messages and marks analysis completion with placeholder behavior only, but this should be confirmed before implementation because it begins the worker side of the system.
