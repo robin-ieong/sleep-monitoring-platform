@@ -1,6 +1,8 @@
 package com.example.sleep.recordings.web;
 
 import com.example.sleep.recordings.Recording;
+import com.example.sleep.recordings.RecordingAnalysisResult;
+import com.example.sleep.recordings.RecordingAnalysisResultNotFoundException;
 import com.example.sleep.recordings.RecordingId;
 import com.example.sleep.recordings.RecordingNotFoundException;
 import com.example.sleep.recordings.application.CompleteRecordingUploadCommand;
@@ -10,6 +12,7 @@ import com.example.sleep.recordings.application.CreateRecordingUploadResult;
 import com.example.sleep.recordings.application.CreateRecordingUploadService;
 import com.example.sleep.recordings.application.MarkRecordingStoredCommand;
 import com.example.sleep.recordings.application.MarkRecordingStoredService;
+import com.example.sleep.recordings.application.RecordingAnalysisResultRepository;
 import com.example.sleep.recordings.application.RecordingRepository;
 import com.example.sleep.recordings.application.RequestRecordingAnalysisCommand;
 import com.example.sleep.recordings.application.RequestRecordingAnalysisService;
@@ -34,6 +37,7 @@ public class RecordingController {
     private final CompleteRecordingUploadService completeUploadService;
     private final RequestRecordingAnalysisService requestAnalysisService;
     private final RecordingRepository repository;
+    private final RecordingAnalysisResultRepository resultRepository;
 
     public RecordingController(
             RegisterRecordingService service,
@@ -41,7 +45,8 @@ public class RecordingController {
             CreateRecordingUploadService createUploadService,
             CompleteRecordingUploadService completeUploadService,
             RequestRecordingAnalysisService requestAnalysisService,
-            RecordingRepository repository
+            RecordingRepository repository,
+            RecordingAnalysisResultRepository resultRepository
     ) {
         if (service == null) {
             throw new IllegalArgumentException("service must not be null");
@@ -61,12 +66,16 @@ public class RecordingController {
         if (repository == null) {
             throw new IllegalArgumentException("repository must not be null");
         }
+        if (resultRepository == null) {
+            throw new IllegalArgumentException("resultRepository must not be null");
+        }
         this.service = service;
         this.markStoredService = markStoredService;
         this.createUploadService = createUploadService;
         this.completeUploadService = completeUploadService;
         this.requestAnalysisService = requestAnalysisService;
         this.repository = repository;
+        this.resultRepository = resultRepository;
     }
 
     @PostMapping("/recordings")
@@ -134,5 +143,14 @@ public class RecordingController {
         ));
 
         return ResponseEntity.accepted().body(RecordingHttpResponse.from(recording));
+    }
+
+    @GetMapping("/recordings/{id}/analysis-result")
+    ResponseEntity<RecordingAnalysisResultHttpResponse> getAnalysisResult(@PathVariable String id) {
+        RecordingId recordingId = new RecordingId(id);
+        RecordingAnalysisResult result = resultRepository.findByRecordingId(recordingId)
+                .orElseThrow(() -> new RecordingAnalysisResultNotFoundException(recordingId));
+
+        return ResponseEntity.ok(RecordingAnalysisResultHttpResponse.from(result));
     }
 }

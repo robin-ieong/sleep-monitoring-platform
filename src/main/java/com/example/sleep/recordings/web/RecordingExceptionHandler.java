@@ -1,5 +1,6 @@
 package com.example.sleep.recordings.web;
 
+import com.example.sleep.recordings.RecordingAnalysisResultNotFoundException;
 import com.example.sleep.recordings.RecordingNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +42,13 @@ public class RecordingExceptionHandler {
 
     @ExceptionHandler(RecordingNotFoundException.class)
     ResponseEntity<RecordingErrorResponse> notFound(RecordingNotFoundException exception) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(new RecordingErrorResponse(exception.getMessage()));
+    }
+
+    @ExceptionHandler(RecordingAnalysisResultNotFoundException.class)
+    ResponseEntity<RecordingErrorResponse> analysisResultNotFound(RecordingAnalysisResultNotFoundException exception) {
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
                 .body(new RecordingErrorResponse(exception.getMessage()));

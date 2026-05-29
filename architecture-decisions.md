@@ -1242,7 +1242,13 @@ The current result model is intentionally a placeholder. It records:
 
 In the `local` profile, results are stored in `recording_analysis_results` with a foreign key to `recordings`. In the default profile, results use an in-memory adapter.
 
-There is no public analysis-result HTTP endpoint yet. That is a separate API design step.
+The current read API is:
+
+```http
+GET /recordings/{id}/analysis-result
+```
+
+It returns the saved placeholder result or `404 Not Found` when no result exists.
 
 ### Temporary Development Trigger
 
@@ -1264,15 +1270,14 @@ The following are intentionally not decided or implemented yet:
 
 ### Recommended Next Domain Boundary
 
-Before implementing real detection logic, the next useful domain boundary is deciding how analysis results should be exposed and how failures should be represented.
+Before implementing real detection logic, the next useful domain boundary is deciding how analysis failures should be represented.
 
 That step should answer:
 
-- What HTTP API should expose analysis results?
 - How should failed analysis be represented?
 - Which fields are placeholders now versus future real metrics?
 
-Recommended constraint: expose or classify result status first, not detection algorithms.
+Recommended constraint: classify result and failure status first, not detection algorithms.
 
 | Area | Recommendation |
 | --- | --- |

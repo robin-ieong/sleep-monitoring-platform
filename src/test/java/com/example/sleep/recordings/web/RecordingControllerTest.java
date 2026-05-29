@@ -1,6 +1,7 @@
 package com.example.sleep.recordings.web;
 
 import com.example.sleep.recordings.Recording;
+import com.example.sleep.recordings.RecordingAnalysisResult;
 import com.example.sleep.recordings.RecordingId;
 import com.example.sleep.recordings.StorageObjectReference;
 import com.example.sleep.recordings.application.CompleteRecordingUploadService;
@@ -12,6 +13,7 @@ import com.example.sleep.recordings.application.RecordingAnalysisQueue;
 import com.example.sleep.recordings.application.RecordingObjectVerifier;
 import com.example.sleep.recordings.application.RequestRecordingAnalysisService;
 import com.example.sleep.recordings.application.RegisterRecordingService;
+import com.example.sleep.recordings.infrastructure.InMemoryRecordingAnalysisResultRepository;
 import com.example.sleep.recordings.infrastructure.InMemoryRecordingRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -44,6 +46,8 @@ class RecordingControllerTest {
     );
 
     private final InMemoryRecordingRepository repository = new InMemoryRecordingRepository();
+    private final InMemoryRecordingAnalysisResultRepository resultRepository =
+            new InMemoryRecordingAnalysisResultRepository();
     private final RegisterRecordingService service = new RegisterRecordingService(
             repository,
             Clock.fixed(NOW, ZoneOffset.UTC)
@@ -77,7 +81,8 @@ class RecordingControllerTest {
                     createUploadService,
                     completeUploadService,
                     requestAnalysisService,
-                    repository
+                    repository,
+                    resultRepository
             ))
             .setControllerAdvice(new RecordingExceptionHandler())
             .build();
@@ -336,6 +341,30 @@ class RecordingControllerTest {
                 .andExpect(jsonPath("$.status").value("ANALYSIS_REQUESTED"));
 
         assertThat(analysisQueue.recording.id()).isEqualTo(new RecordingId("rec-123"));
+    }
+
+    @Test
+    void getsRecordingAnalysisResult() throws Exception {
+        resultRepository.save(RecordingAnalysisResult.placeholderCompleted(
+                new RecordingId("rec-123"),
+                Instant.parse("2026-05-29T16:00:00Z")
+        ));
+
+        mockMvc.perform(get("/recordings/rec-123/analysis-result"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recordingId").value("rec-123"))
+                .andExpect(jsonPath("$.status").value("PLACEHOLDER_COMPLETED"))
+                .andExpect(jsonPath("$.completedAt").value("2026-05-29T16:00:00Z"))
+                .andExpect(jsonPath("$.summary").value(
+                        "Analysis job completed; audio analysis is not implemented yet."
+                ));
+    }
+
+    @Test
+    void returnsNotFoundWhenAnalysisResultDoesNotExist() throws Exception {
+        mockMvc.perform(get("/recordings/rec-123/analysis-result"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Analysis result for recording rec-123 was not found"));
     }
 
     private static final class PresignedRecordingUploadFake implements PresignedRecordingUploadPort {

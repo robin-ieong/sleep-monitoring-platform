@@ -173,6 +173,25 @@ When the placeholder worker completes an analysis job, it now saves a `Recording
 
 With the `local` profile, these results are persisted in PostgreSQL in `recording_analysis_results`. With the default profile, they are kept in memory. There is not yet a public HTTP endpoint for reading analysis results.
 
+Read a recording's analysis result:
+
+```http
+GET /recordings/rec-123/analysis-result
+```
+
+Successful responses return `200 OK` and the saved placeholder result:
+
+```json
+{
+  "recordingId": "rec-123",
+  "status": "PLACEHOLDER_COMPLETED",
+  "completedAt": "2026-05-29T16:00:00Z",
+  "summary": "Analysis job completed; audio analysis is not implemented yet."
+}
+```
+
+Missing results return `404 Not Found`.
+
 ## Recording Package Structure
 
 The `recordings` module is split by responsibility:

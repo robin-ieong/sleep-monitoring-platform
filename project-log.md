@@ -3238,3 +3238,117 @@ Intentionally not included:
 ### Next Proposed Action
 
 Review and commit/push this placeholder analysis result boundary. After that, the next possible step is to expose the placeholder analysis result through a read-only HTTP endpoint, still without adding real detection logic.
+
+## 2026-05-29 16:49 BST - Placeholder Analysis Result Push Checkpoint
+
+### User Request
+
+The user confirmed the placeholder analysis result boundary was pushed and asked what is next.
+
+### Current State
+
+- Minimal placeholder analysis result boundary is implemented, verified, and pushed.
+- Worker completion now saves a `PLACEHOLDER_COMPLETED` result.
+- Local PostgreSQL has Flyway migration V2 for `recording_analysis_results`.
+- There is still no HTTP endpoint for reading analysis results.
+- There is still no real snoring, apnea, silence, or audio detection logic.
+- No Git commands were run, honoring the user's preference to run Git commands themselves.
+
+### Next Proposed Step
+
+Recommended next milestone: expose the placeholder analysis result through a read-only HTTP endpoint:
+
+```http
+GET /recordings/{id}/analysis-result
+```
+
+Scope should remain narrow:
+
+- return the saved placeholder analysis result;
+- return `404` when no result exists;
+- use the existing `RecordingAnalysisResultRepository` port;
+- add unit tests first;
+- no real detection logic;
+- no result metrics yet.
+
+## 2026-05-29 17:03 BST - Read-Only Analysis Result Endpoint
+
+### User Request
+
+Proceed with the next step: expose the placeholder analysis result through a read-only HTTP endpoint.
+
+### Scope
+
+Added a narrow read-only endpoint:
+
+```http
+GET /recordings/{id}/analysis-result
+```
+
+Included:
+
+- HTTP response DTO for analysis results.
+- Typed not-found exception for missing analysis results.
+- Controller endpoint using the existing `RecordingAnalysisResultRepository` port.
+- Unit tests for successful result retrieval and missing-result `404`.
+- README and architecture documentation updates.
+
+Intentionally not included:
+
+- No real snoring, apnea, silence, or audio detection logic.
+- No additional result metrics.
+- No write/update result endpoint.
+- No failure result model.
+
+### TDD Notes
+
+- Updated `RecordingControllerTest` first.
+- First expected red state:
+  - test compilation failed because `RecordingController` did not accept a result repository and no endpoint existed.
+- Added the response DTO, not-found exception, exception handler mapping, and controller endpoint.
+- Focused controller tests passed, then full suite passed.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/RecordingAnalysisResultNotFoundException.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingAnalysisResultHttpResponse.java`
+
+### Files Changed
+
+- `README.md`
+- `architecture-decisions.md`
+- `src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingExceptionHandler.java`
+- `src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `project-log.md`
+
+### Commands Run
+
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/RecordingNotFoundException.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/web/RecordingExceptionHandler.java`
+- `sed -n '1,430p' src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `sed -n '1,180p' src/main/java/com/example/sleep/recordings/RecordingAnalysisResult.java`
+- `sed -n '1,120p' src/main/java/com/example/sleep/recordings/application/RecordingAnalysisResultRepository.java`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository -Dtest=RecordingControllerTest test`
+- `rg -n "There is no public|Current Analysis Result Boundary|analysis-result|PLACEHOLDER" architecture-decisions.md README.md`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Focused controller test command passed:
+  - 13 tests run.
+  - 0 failures.
+  - 0 errors.
+- Full Maven test suite passed:
+  - 65 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Modern Java Notes
+
+- `RecordingAnalysisResultHttpResponse` is a Java record. Records are newer than Java 8 and fit this use because the response is a small immutable data carrier.
+
+### Next Proposed Action
+
+Review and commit/push this read-only endpoint. After that, the next design step should be a failure/status model for analysis jobs, before adding any real detection logic.
