@@ -8,7 +8,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 
-public final class ProcessRecordingAnalysisJobService {
+public final class ProcessRecordingAnalysisJobService implements RecordingAnalysisJobProcessor {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -26,6 +26,7 @@ public final class ProcessRecordingAnalysisJobService {
         this.clock = clock;
     }
 
+    @Override
     public Recording process(String messageBody) {
         AnalysisJobMessage message = parse(messageBody);
         if (!message.status().equals("ANALYSIS_REQUESTED")) {

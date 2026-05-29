@@ -2758,3 +2758,291 @@ Read `AGENTS.md` and `project-log.md`, then continue from the handoff.
 ### Next Proposed Action
 
 The Step 17 review found no code issues. The user should review and commit/push Step 17 themselves if satisfied. After that, confirm the next milestone before implementation, likely an SQS polling adapter that receives messages, calls `ProcessRecordingAnalysisJobService`, and deletes messages only after successful processing.
+
+## 2026-05-29 09:47 BST - Step 17 Push Checkpoint
+
+### User Request
+
+The user confirmed Step 17 changes were pushed and asked what is next.
+
+### Current State
+
+- Step 17 is reviewed and pushed.
+- The application can request analysis by publishing a message to SQS.
+- The application now has `ProcessRecordingAnalysisJobService` to process one queued message body.
+- There is still no SQS polling adapter that reads from the queue, calls the service, and deletes successfully processed messages.
+- No Git commands were run, honoring the user's preference to run Git commands themselves.
+
+### Next Proposed Step
+
+Step 18 should be confirmed before implementation. Recommended scope: a narrow SQS polling adapter that receives messages from the configured recording-analysis queue, passes each message body to `ProcessRecordingAnalysisJobService`, and deletes each SQS message only after successful processing. It should not add real snoring/apnea detection, analysis results, or a separate deployed worker runtime yet.
+
+## 2026-05-29 10:06 BST - Step 18: SQS Polling Adapter
+
+### User Request
+
+Proceed with the next step: add the narrow SQS polling adapter.
+
+### Scope
+
+Added a local-profile infrastructure adapter that can poll SQS once for queued analysis jobs.
+
+Included:
+
+- `SqsRecordingAnalysisJobPoller`.
+- `RecordingAnalysisJobProcessor` application interface.
+- `ProcessRecordingAnalysisJobService` now implements `RecordingAnalysisJobProcessor`.
+- Local-profile Spring bean wiring for the SQS poller.
+- Unit tests covering:
+  - receiving SQS messages from the configured queue;
+  - processing each message body;
+  - deleting messages after successful processing;
+  - not deleting messages when processing fails.
+- README documentation for the polling adapter behavior.
+
+Intentionally not included:
+
+- No automatic polling loop or scheduler.
+- No separate worker runtime/process.
+- No SQS dead-letter queue policy.
+- No analysis result schema.
+- No snoring, apnea, silence, or audio detection logic.
+
+### TDD Notes
+
+- Added `SqsRecordingAnalysisJobPollerTest` first.
+- First expected red state:
+  - test compilation failed because `SqsRecordingAnalysisJobPoller` did not exist.
+- Added the poller implementation and Spring wiring.
+- The first test implementation used Mockito to mock `ProcessRecordingAnalysisJobService`, but Mockito inline mock creation failed in this WSL/JDK session because Byte Buddy could not self-attach to the JVM.
+- Replaced Mockito usage in the new test with a small fake by adding the `RecordingAnalysisJobProcessor` interface and making `ProcessRecordingAnalysisJobService` implement it.
+- Focused poller tests then passed.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/application/RecordingAnalysisJobProcessor.java`
+- `src/main/java/com/example/sleep/recordings/infrastructure/SqsRecordingAnalysisJobPoller.java`
+- `src/test/java/com/example/sleep/recordings/infrastructure/SqsRecordingAnalysisJobPollerTest.java`
+
+### Files Changed
+
+- `README.md`
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `src/main/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobService.java`
+- `project-log.md`
+
+### Commands Run
+
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/infrastructure/SqsRecordingAnalysisQueue.java`
+- `sed -n '1,260p' src/test/java/com/example/sleep/recordings/infrastructure/SqsRecordingAnalysisQueueTest.java`
+- `sed -n '1,240p' src/main/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobService.java`
+- `sed -n '1,320p' src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository -Dtest=SqsRecordingAnalysisJobPollerTest test`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Focused poller test command succeeded:
+  - 2 tests run.
+  - 0 failures.
+  - 0 errors.
+- Full Maven test command succeeded:
+  - 57 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Modern Java Notes
+
+- `RecordingAnalysisJobProcessor` is a small Java interface used to decouple the SQS poller from the concrete processing service. This is a classic Java pattern and keeps the test simple without relying on Mockito for a final class.
+- `SqsRecordingAnalysisJobPoller.pollOnce()` uses enhanced `for` iteration over received SQS messages and returns the number of successfully processed/deleted messages.
+
+### Next Proposed Action
+
+Review and commit/push Step 18. After that, decide whether the next step should be manual local-profile runtime verification of the full SQS request-to-poll-to-completed flow, or a controlled way to trigger `pollOnce()` during development without adding an always-running background worker yet.
+
+## 2026-05-29 11:54 BST - Step 19: Local Manual Poll Endpoint and Runtime Verification
+
+### User Request
+
+Proceed with manual runtime verification and walk through each verification step.
+
+### Scope
+
+Added a local-profile-only development endpoint to trigger the SQS poller manually:
+
+```http
+POST /dev/recording-analysis-jobs/poll
+```
+
+Included:
+
+- `LocalRecordingAnalysisJobController`.
+- `RecordingAnalysisJobPollResponse`.
+- Unit test coverage for the dev endpoint.
+- README documentation for the local manual polling endpoint.
+- Runtime verification of the full local flow from recording upload through analysis completion.
+
+Intentionally not included:
+
+- No automatic polling loop or scheduler.
+- No separate worker runtime/process.
+- No production-facing worker endpoint.
+- No analysis result schema.
+- No snoring, apnea, silence, or audio detection logic.
+
+### TDD Notes
+
+- Added `LocalRecordingAnalysisJobControllerTest` first.
+- First expected red state:
+  - test compilation failed because `LocalRecordingAnalysisJobController` did not exist.
+- Added the minimal controller and response record.
+- Focused controller test then passed.
+- Full Maven test suite passed.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/web/LocalRecordingAnalysisJobController.java`
+- `src/main/java/com/example/sleep/recordings/web/RecordingAnalysisJobPollResponse.java`
+- `src/test/java/com/example/sleep/recordings/web/LocalRecordingAnalysisJobControllerTest.java`
+
+### Files Changed
+
+- `README.md`
+- `project-log.md`
+
+### Runtime Verification Walkthrough
+
+1. Checked Docker Compose service status.
+   - Initial `docker compose ps` showed no running services.
+2. Started dependencies:
+   - `docker compose up -d`
+3. Confirmed services:
+   - `sleep-localstack` healthy on port `4566`.
+   - `sleep-postgres` healthy on port `5432`.
+   - LocalStack health reported S3 and SQS running.
+4. Started the app with the `local` profile.
+   - First attempt inside the default sandbox failed because the app could not open a socket to Postgres: `java.net.SocketException: Operation not permitted`.
+   - Retried with approved elevated permissions.
+   - App started successfully on port `8080`.
+   - Flyway validated the Postgres schema and reported it was up to date.
+5. Created recording upload:
+   - `POST /recording-uploads`
+   - Recording id: `rec-local-poll-1`.
+   - Response status: HTTP `201`.
+   - Recording status: `AWAITING_UPLOAD`.
+6. Uploaded test bytes to the returned LocalStack S3 presigned URL.
+   - Response status: HTTP `200`.
+7. Completed upload:
+   - `POST /recordings/rec-local-poll-1/upload-complete`
+   - Response status: HTTP `200`.
+   - Recording status: `STORED`.
+8. Requested analysis:
+   - `POST /recordings/rec-local-poll-1/analysis-requests`
+   - Response status: HTTP `202`.
+   - Recording status: `ANALYSIS_REQUESTED`.
+9. Checked SQS queue attributes without consuming the message.
+   - `ApproximateNumberOfMessages`: `1`.
+   - `ApproximateNumberOfMessagesNotVisible`: `0`.
+10. Triggered manual polling:
+    - `POST /dev/recording-analysis-jobs/poll`
+    - Response status: HTTP `200`.
+    - Response body: `{"processedCount":1}`.
+11. Fetched recording:
+    - `GET /recordings/rec-local-poll-1`
+    - Response status: HTTP `200`.
+    - Recording status: `ANALYSIS_COMPLETED`.
+12. Queried Postgres:
+    - `status`: `ANALYSIS_COMPLETED`.
+    - `analysis_requested_at`: populated.
+    - `analysis_completed_at`: populated.
+13. Checked SQS queue attributes after polling:
+    - `ApproximateNumberOfMessages`: `0`.
+    - `ApproximateNumberOfMessagesNotVisible`: `0`.
+14. Stopped the Spring Boot dev server.
+    - Confirmed port `8080` no longer responds.
+
+### Commands Run
+
+- `sed -n '1,420p' src/test/java/com/example/sleep/recordings/web/RecordingControllerTest.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/web/RecordingHttpResponse.java`
+- `rg -n "Controller|Response|dev|poll" src/main/java src/test/java`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository -Dtest=LocalRecordingAnalysisJobControllerTest test`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `docker compose ps`
+- `docker compose up -d`
+- `curl -s http://localhost:4566/_localstack/health`
+- `SPRING_PROFILES_ACTIVE=local MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository spring-boot:run`
+- `curl -i -s -X POST http://localhost:8080/recording-uploads ...`
+- `curl -i -s -X PUT ...`
+- `curl -i -s -X POST http://localhost:8080/recordings/rec-local-poll-1/upload-complete ...`
+- `curl -i -s -X POST http://localhost:8080/recordings/rec-local-poll-1/analysis-requests`
+- `docker compose exec -T localstack awslocal sqs get-queue-attributes ...`
+- `curl -i -s -X POST http://localhost:8080/dev/recording-analysis-jobs/poll`
+- `curl -i -s http://localhost:8080/recordings/rec-local-poll-1`
+- `docker compose exec -T postgres psql -U sleep_app -d sleep_monitoring -c "SELECT ..."`
+- `fuser -n tcp 8080`
+- `kill 16155`
+- `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/actuator/health`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Focused controller test passed:
+  - 1 test run.
+  - 0 failures.
+  - 0 errors.
+- Full Maven test suite passed:
+  - 58 tests run.
+  - 0 failures.
+  - 0 errors.
+- Local runtime verification passed:
+  - recording moved from `AWAITING_UPLOAD` to `STORED`;
+  - analysis request moved it to `ANALYSIS_REQUESTED`;
+  - SQS contained one queued message;
+  - manual polling processed one message;
+  - recording moved to `ANALYSIS_COMPLETED`;
+  - SQS queue was empty afterward.
+
+### Environment Notes
+
+- Docker daemon access required elevated permissions from this tool session.
+- Running the Spring Boot app with the `local` profile required elevated permissions because the default sandbox prevented opening a socket to Postgres.
+
+### Modern Java Notes
+
+- `RecordingAnalysisJobPollResponse` is a Java record. Records are newer than Java 8 and are useful here for tiny immutable HTTP response DTOs where Java can generate the constructor and accessor.
+
+### Next Proposed Action
+
+Review and commit/push Steps 18 and 19. After that, the next design decision is whether to keep the dev endpoint temporarily while moving toward a real worker trigger, such as a scheduler or separate worker runtime, or to defer that until there is real analysis behavior to execute.
+
+## 2026-05-29 15:39 BST - Steps 18 and 19 Review Checkpoint
+
+### User Request
+
+The user confirmed the Step 18 and Step 19 changes look good and asked what is next.
+
+### Current State
+
+- SQS polling adapter is implemented and unit tested.
+- Local-only manual polling endpoint is implemented and unit tested.
+- Full local runtime flow has been verified:
+  - upload created;
+  - object uploaded to LocalStack S3;
+  - upload completed;
+  - analysis requested;
+  - SQS message polled through the dev endpoint;
+  - recording persisted as `ANALYSIS_COMPLETED`;
+  - SQS queue emptied after successful processing.
+- No Git commands were run, honoring the user's preference to run Git commands themselves.
+
+### Next Proposed Step
+
+The immediate next action is for the user to commit/push Steps 18 and 19.
+
+After that, the recommended project milestone is not real detection logic yet. A better next step is to add a minimal analysis result/status boundary or a worker trigger decision, after explicit confirmation:
+
+- Option A: keep the dev endpoint and add a small analysis result placeholder model, such as `analysis_summary`, without snoring/apnea logic.
+- Option B: replace the dev endpoint with a more production-shaped trigger, such as a scheduler or separate worker runtime.
+- Option C: pause backend implementation and review/document the current architecture before adding more behavior.

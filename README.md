@@ -18,9 +18,9 @@ The platform will accept sleep audio recordings, store them, process them asynch
 
 ## Current Scope
 
-This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, recording persistence, storage/upload ports, thin HTTP endpoints, LocalStack S3 integration for presigned upload URLs and object verification, a LocalStack SQS boundary for analysis job requests, and a small worker-side service for processing one queued analysis message body.
+This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, recording persistence, storage/upload ports, thin HTTP endpoints, LocalStack S3 integration for presigned upload URLs and object verification, a LocalStack SQS boundary for analysis job requests, a small worker-side service for processing one queued analysis message body, and a local-profile SQS polling adapter.
 
-No SQS polling loop, separate worker runtime, or detection logic has been implemented yet.
+No automatic polling loop, separate worker runtime, or detection logic has been implemented yet.
 
 ## Recording Registration Endpoint
 
@@ -124,7 +124,21 @@ The application layer now has a `ProcessRecordingAnalysisJobService` that can pr
 {"recordingId":"rec-123","status":"ANALYSIS_REQUESTED"}
 ```
 
-For now, this worker-side boundary loads the recording, verifies the existing lifecycle state through the domain model, marks analysis as completed, and saves the updated metadata. This is placeholder worker behavior only. There is no SQS polling loop, separate worker runtime, analysis result model, or snoring/apnea/silence detection logic yet.
+For now, this worker-side boundary loads the recording, verifies the existing lifecycle state through the domain model, marks analysis as completed, and saves the updated metadata. This is placeholder worker behavior only. There is no automatic polling loop, separate worker runtime, analysis result model, or snoring/apnea/silence detection logic yet.
+
+With the `local` profile, the infrastructure layer also has an `SqsRecordingAnalysisJobPoller` adapter. One call to `pollOnce()` receives a batch of SQS messages, passes each message body to the worker-side processor, and deletes each SQS message only after successful processing. Failed messages are left undeleted so SQS can retry them later.
+
+For local manual verification, the `local` profile exposes a development endpoint:
+
+```http
+POST /dev/recording-analysis-jobs/poll
+```
+
+This endpoint calls `pollOnce()` and returns the number of successfully processed messages:
+
+```json
+{"processedCount":1}
+```
 
 ## Recording Package Structure
 

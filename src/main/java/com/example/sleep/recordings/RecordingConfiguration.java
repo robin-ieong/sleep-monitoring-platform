@@ -5,6 +5,7 @@ import com.example.sleep.recordings.application.CreateRecordingUploadService;
 import com.example.sleep.recordings.application.MarkRecordingStoredService;
 import com.example.sleep.recordings.application.PresignedRecordingUploadPort;
 import com.example.sleep.recordings.application.ProcessRecordingAnalysisJobService;
+import com.example.sleep.recordings.application.RecordingAnalysisJobProcessor;
 import com.example.sleep.recordings.application.RecordingAnalysisQueue;
 import com.example.sleep.recordings.application.RecordingObjectVerifier;
 import com.example.sleep.recordings.application.RecordingRepository;
@@ -17,6 +18,7 @@ import com.example.sleep.recordings.infrastructure.InMemoryRecordingRepository;
 import com.example.sleep.recordings.infrastructure.JdbcRecordingRepository;
 import com.example.sleep.recordings.infrastructure.S3PresignedRecordingUploadPort;
 import com.example.sleep.recordings.infrastructure.S3RecordingObjectVerifier;
+import com.example.sleep.recordings.infrastructure.SqsRecordingAnalysisJobPoller;
 import com.example.sleep.recordings.infrastructure.SqsRecordingAnalysisQueue;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -138,6 +140,16 @@ public class RecordingConfiguration {
             Clock clock
     ) {
         return new ProcessRecordingAnalysisJobService(repository, clock);
+    }
+
+    @Bean
+    @Profile("local")
+    SqsRecordingAnalysisJobPoller sqsRecordingAnalysisJobPoller(
+            SqsClient sqsClient,
+            RecordingAnalysisJobProcessor processor,
+            @Value("${app.queue.recording-analysis-queue-url}") String queueUrl
+    ) {
+        return new SqsRecordingAnalysisJobPoller(sqsClient, queueUrl, processor);
     }
 
     @Bean
