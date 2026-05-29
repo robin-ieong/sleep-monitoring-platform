@@ -1,10 +1,12 @@
 package com.example.sleep.recordings.application;
 
 import com.example.sleep.recordings.Recording;
+import com.example.sleep.recordings.RecordingAnalysisResultStatus;
 import com.example.sleep.recordings.RecordingId;
 import com.example.sleep.recordings.RecordingNotFoundException;
 import com.example.sleep.recordings.RecordingStatus;
 import com.example.sleep.recordings.StorageObjectReference;
+import com.example.sleep.recordings.infrastructure.InMemoryRecordingAnalysisResultRepository;
 import com.example.sleep.recordings.infrastructure.InMemoryRecordingRepository;
 import org.junit.jupiter.api.Test;
 
@@ -25,8 +27,11 @@ class ProcessRecordingAnalysisJobServiceTest {
             new StorageObjectReference("sleep-recordings", "recordings/user-456/rec-123/audio");
 
     private final InMemoryRecordingRepository repository = new InMemoryRecordingRepository();
+    private final InMemoryRecordingAnalysisResultRepository resultRepository =
+            new InMemoryRecordingAnalysisResultRepository();
     private final ProcessRecordingAnalysisJobService service = new ProcessRecordingAnalysisJobService(
             repository,
+            resultRepository,
             Clock.fixed(ANALYSIS_COMPLETED_AT, ZoneOffset.UTC)
     );
 
@@ -41,6 +46,11 @@ class ProcessRecordingAnalysisJobServiceTest {
         assertThat(completed.status()).isEqualTo(RecordingStatus.ANALYSIS_COMPLETED);
         assertThat(completed.analysisCompletedAt()).contains(ANALYSIS_COMPLETED_AT);
         assertThat(repository.findById(new RecordingId("rec-123"))).contains(completed);
+        assertThat(resultRepository.findByRecordingId(new RecordingId("rec-123"))).hasValueSatisfying(result -> {
+            assertThat(result.status()).isEqualTo(RecordingAnalysisResultStatus.PLACEHOLDER_COMPLETED);
+            assertThat(result.completedAt()).isEqualTo(ANALYSIS_COMPLETED_AT);
+            assertThat(result.summary()).isEqualTo("Analysis job completed; audio analysis is not implemented yet.");
+        });
     }
 
     @Test

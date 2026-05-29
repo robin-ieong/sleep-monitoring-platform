@@ -18,9 +18,31 @@ The platform will accept sleep audio recordings, store them, process them asynch
 
 ## Current Scope
 
-This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, recording persistence, storage/upload ports, thin HTTP endpoints, LocalStack S3 integration for presigned upload URLs and object verification, a LocalStack SQS boundary for analysis job requests, a small worker-side service for processing one queued analysis message body, and a local-profile SQS polling adapter.
+This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, recording persistence, storage/upload ports, thin HTTP endpoints, LocalStack S3 integration for presigned upload URLs and object verification, a LocalStack SQS boundary for analysis job requests, a small worker-side service for processing one queued analysis message body, a local-profile SQS polling adapter, and a minimal placeholder analysis result boundary.
 
 No automatic polling loop, separate worker runtime, or detection logic has been implemented yet.
+
+## Current Recording Lifecycle
+
+The current lifecycle is intentionally small:
+
+| Status | Meaning |
+| --- | --- |
+| `AWAITING_UPLOAD` | Metadata exists, but the audio object has not yet been verified in storage. |
+| `STORED` | The backend verified the expected object exists in S3-compatible storage. |
+| `ANALYSIS_REQUESTED` | Analysis was requested and an SQS message was queued. |
+| `ANALYSIS_COMPLETED` | The placeholder worker boundary processed the queued message successfully. |
+
+`ANALYSIS_COMPLETED` does not mean real audio analysis has happened yet. It currently means the worker-side lifecycle path has been exercised, persisted, and accompanied by a placeholder analysis result.
+
+The verified local flow is:
+
+1. `POST /recording-uploads`
+2. Client uploads bytes to the returned presigned S3 URL.
+3. `POST /recordings/{id}/upload-complete`
+4. `POST /recordings/{id}/analysis-requests`
+5. `POST /dev/recording-analysis-jobs/poll` under the `local` profile.
+6. `GET /recordings/{id}` returns `ANALYSIS_COMPLETED`.
 
 ## Recording Registration Endpoint
 
@@ -139,6 +161,17 @@ This endpoint calls `pollOnce()` and returns the number of successfully processe
 ```json
 {"processedCount":1}
 ```
+
+## Analysis Result Boundary
+
+When the placeholder worker completes an analysis job, it now saves a `RecordingAnalysisResult` with:
+
+- recording id;
+- result status `PLACEHOLDER_COMPLETED`;
+- completion timestamp;
+- summary text: `Analysis job completed; audio analysis is not implemented yet.`
+
+With the `local` profile, these results are persisted in PostgreSQL in `recording_analysis_results`. With the default profile, they are kept in memory. There is not yet a public HTTP endpoint for reading analysis results.
 
 ## Recording Package Structure
 

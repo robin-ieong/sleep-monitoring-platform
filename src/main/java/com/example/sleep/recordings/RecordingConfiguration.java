@@ -7,6 +7,7 @@ import com.example.sleep.recordings.application.PresignedRecordingUploadPort;
 import com.example.sleep.recordings.application.ProcessRecordingAnalysisJobService;
 import com.example.sleep.recordings.application.RecordingAnalysisJobProcessor;
 import com.example.sleep.recordings.application.RecordingAnalysisQueue;
+import com.example.sleep.recordings.application.RecordingAnalysisResultRepository;
 import com.example.sleep.recordings.application.RecordingObjectVerifier;
 import com.example.sleep.recordings.application.RecordingRepository;
 import com.example.sleep.recordings.application.RequestRecordingAnalysisService;
@@ -14,7 +15,9 @@ import com.example.sleep.recordings.application.RegisterRecordingService;
 import com.example.sleep.recordings.infrastructure.FakePresignedRecordingUploadPort;
 import com.example.sleep.recordings.infrastructure.FakeRecordingAnalysisQueue;
 import com.example.sleep.recordings.infrastructure.FakeRecordingObjectVerifier;
+import com.example.sleep.recordings.infrastructure.InMemoryRecordingAnalysisResultRepository;
 import com.example.sleep.recordings.infrastructure.InMemoryRecordingRepository;
+import com.example.sleep.recordings.infrastructure.JdbcRecordingAnalysisResultRepository;
 import com.example.sleep.recordings.infrastructure.JdbcRecordingRepository;
 import com.example.sleep.recordings.infrastructure.S3PresignedRecordingUploadPort;
 import com.example.sleep.recordings.infrastructure.S3RecordingObjectVerifier;
@@ -51,6 +54,18 @@ public class RecordingConfiguration {
     @Profile("local")
     RecordingRepository jdbcRecordingRepository(JdbcTemplate jdbcTemplate) {
         return new JdbcRecordingRepository(jdbcTemplate);
+    }
+
+    @Bean
+    @Profile("!local")
+    RecordingAnalysisResultRepository recordingAnalysisResultRepository() {
+        return new InMemoryRecordingAnalysisResultRepository();
+    }
+
+    @Bean
+    @Profile("local")
+    RecordingAnalysisResultRepository jdbcRecordingAnalysisResultRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcRecordingAnalysisResultRepository(jdbcTemplate);
     }
 
     @Bean
@@ -137,9 +152,10 @@ public class RecordingConfiguration {
     @Bean
     ProcessRecordingAnalysisJobService processRecordingAnalysisJobService(
             RecordingRepository repository,
+            RecordingAnalysisResultRepository resultRepository,
             Clock clock
     ) {
-        return new ProcessRecordingAnalysisJobService(repository, clock);
+        return new ProcessRecordingAnalysisJobService(repository, resultRepository, clock);
     }
 
     @Bean

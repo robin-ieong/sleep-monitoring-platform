@@ -1186,6 +1186,94 @@ Recommended choice: **GitHub Actions build/test first**
 
 ## Architecture Decision Record Summary
 
+## Current Architecture Checkpoint - 2026-05-29
+
+The project has now proved the first production-shaped recording flow locally while still avoiding real snoring, apnea, silence, or audio-analysis logic.
+
+### Current Runtime Shape
+
+The application is still a modular monolith:
+
+- HTTP API, application services, persistence adapters, S3 adapters, SQS adapters, and the worker-side processor live in one Spring Boot application.
+- PostgreSQL, LocalStack S3, and LocalStack SQS run as local Docker Compose dependencies.
+- The Spring Boot app runs locally from IntelliJ or the Maven Wrapper, not in Docker.
+
+This keeps debugging simple while preserving boundaries that can later support a separate worker process.
+
+### Current Recording Lifecycle
+
+Current statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `AWAITING_UPLOAD` | Recording metadata exists, but the audio object has not yet been verified in storage. |
+| `STORED` | The backend verified the expected object exists in S3-compatible storage. |
+| `ANALYSIS_REQUESTED` | Analysis was requested and an SQS message was queued. |
+| `ANALYSIS_COMPLETED` | The worker-side placeholder processor consumed the queued job, completed the lifecycle transition, and saved a placeholder result. |
+
+Important: `ANALYSIS_COMPLETED` currently means the analysis job message was processed successfully by the placeholder worker boundary and a placeholder result was saved. It does **not** mean real audio analysis has happened.
+
+### Current End-to-End Flow
+
+1. Client calls `POST /recording-uploads`.
+2. Backend creates recording metadata with `AWAITING_UPLOAD`.
+3. Backend returns a presigned S3 PUT URL and storage object reference.
+4. Client uploads audio bytes directly to S3-compatible storage.
+5. Client calls `POST /recordings/{id}/upload-complete`.
+6. Backend verifies the object exists through the storage verifier port.
+7. Backend marks the recording as `STORED`.
+8. Client calls `POST /recordings/{id}/analysis-requests`.
+9. Backend marks the recording as `ANALYSIS_REQUESTED`.
+10. Backend sends a small SQS message containing `recordingId` and status.
+11. The local development endpoint `POST /dev/recording-analysis-jobs/poll` triggers one SQS polling pass.
+12. The poller receives queued messages and passes each body to `ProcessRecordingAnalysisJobService`.
+13. The processor loads the recording, uses the domain lifecycle guard to complete analysis, and saves `ANALYSIS_COMPLETED`.
+14. The processor saves a `RecordingAnalysisResult` with status `PLACEHOLDER_COMPLETED`.
+15. The poller deletes the SQS message only after successful processing.
+
+### Current Analysis Result Boundary
+
+The current result model is intentionally a placeholder. It records:
+
+- recording id;
+- status `PLACEHOLDER_COMPLETED`;
+- completion timestamp;
+- summary text stating that audio analysis is not implemented yet.
+
+In the `local` profile, results are stored in `recording_analysis_results` with a foreign key to `recordings`. In the default profile, results use an in-memory adapter.
+
+There is no public analysis-result HTTP endpoint yet. That is a separate API design step.
+
+### Temporary Development Trigger
+
+`POST /dev/recording-analysis-jobs/poll` is local-profile development tooling.
+
+It exists to manually verify the queue-to-worker flow without committing to an always-running scheduler, a separate worker runtime, or production deployment shape. It should not be treated as a production API.
+
+### Deferred Decisions
+
+The following are intentionally not decided or implemented yet:
+
+- Real snoring, apnea, silence, or audio analysis logic.
+- Real analysis result schema beyond the placeholder result boundary.
+- Job failure schema and retry classification.
+- SQS dead-letter queue policy.
+- Automatic polling loop or scheduler.
+- Separate worker process/runtime.
+- Authentication and ownership enforcement.
+
+### Recommended Next Domain Boundary
+
+Before implementing real detection logic, the next useful domain boundary is deciding how analysis results should be exposed and how failures should be represented.
+
+That step should answer:
+
+- What HTTP API should expose analysis results?
+- How should failed analysis be represented?
+- Which fields are placeholders now versus future real metrics?
+
+Recommended constraint: expose or classify result status first, not detection algorithms.
+
 | Area | Recommendation |
 | --- | --- |
 | Project structure | Modular monolith |

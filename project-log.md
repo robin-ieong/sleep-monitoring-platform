@@ -3046,3 +3046,195 @@ After that, the recommended project milestone is not real detection logic yet. A
 - Option A: keep the dev endpoint and add a small analysis result placeholder model, such as `analysis_summary`, without snoring/apnea logic.
 - Option B: replace the dev endpoint with a more production-shaped trigger, such as a scheduler or separate worker runtime.
 - Option C: pause backend implementation and review/document the current architecture before adding more behavior.
+
+## 2026-05-29 15:43 BST - Steps 18 and 19 Push Checkpoint
+
+### User Request
+
+The user confirmed the manual SQS analysis polling flow changes were pushed and asked what is next.
+
+### Current State
+
+- Steps 18 and 19 are pushed.
+- Recording upload, LocalStack S3 verification, analysis request enqueueing, manual SQS polling, and placeholder analysis completion are implemented and verified.
+- The project still intentionally has no snoring/apnea/silence detection logic and no analysis result schema.
+- No Git commands were run, honoring the user's preference to run Git commands themselves.
+
+### Next Proposed Step
+
+Recommended next milestone: architecture review/documentation checkpoint before adding more behavior.
+
+The checkpoint should clarify:
+
+- current end-to-end recording lifecycle;
+- what `ANALYSIS_COMPLETED` currently means while there is no real analysis;
+- whether the local dev polling endpoint remains temporary;
+- what the next small domain boundary should be before any detection logic, likely a minimal analysis result/status model.
+
+## 2026-05-29 15:46 BST - Architecture Documentation Checkpoint
+
+### User Request
+
+Proceed with the recommended architecture/documentation checkpoint before adding more behavior.
+
+### Scope
+
+Documentation-only checkpoint to describe the current verified architecture and clarify deferred decisions.
+
+### Files Changed
+
+- `architecture-decisions.md`
+- `README.md`
+- `project-log.md`
+
+### Documentation Added
+
+- Current modular-monolith runtime shape.
+- Current recording lifecycle:
+  - `AWAITING_UPLOAD`
+  - `STORED`
+  - `ANALYSIS_REQUESTED`
+  - `ANALYSIS_COMPLETED`
+- Explicit clarification that `ANALYSIS_COMPLETED` currently means the placeholder worker boundary processed the queued job successfully, not that real audio analysis has happened.
+- Current end-to-end flow from presigned upload through manual SQS polling.
+- Clarification that `POST /dev/recording-analysis-jobs/poll` is local-profile development tooling, not a production API.
+- Deferred decisions:
+  - real snoring/apnea/silence/audio analysis logic;
+  - analysis result schema;
+  - job failure schema and retry classification;
+  - SQS dead-letter queue policy;
+  - automatic polling loop or scheduler;
+  - separate worker runtime;
+  - authentication and ownership enforcement.
+- Recommended next domain boundary: a minimal analysis result/status model before implementing detection algorithms.
+
+### Commands Run
+
+- `sed -n '1,260p' architecture-decisions.md`
+- `sed -n '1,260p' README.md`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/Recording.java`
+- `sed -n '1,120p' src/main/java/com/example/sleep/recordings/RecordingStatus.java`
+- `sed -n '261,620p' architecture-decisions.md`
+- `sed -n '621,1040p' architecture-decisions.md`
+- `sed -n '1041,1320p' architecture-decisions.md`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Full Maven test suite passed:
+  - 58 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Next Proposed Action
+
+Review and commit/push the documentation checkpoint. After that, confirm whether to start the next implementation milestone: a minimal analysis result/status boundary with no snoring, apnea, silence, or audio detection logic.
+
+## 2026-05-29 15:59 BST - Minimal Placeholder Analysis Result Boundary
+
+### User Request
+
+Proceed with the next step after the architecture checkpoint.
+
+### Scope
+
+Implemented a minimal analysis result/status boundary without adding real audio analysis logic.
+
+Included:
+
+- `RecordingAnalysisResult` domain object.
+- `RecordingAnalysisResultStatus` enum with `PLACEHOLDER_COMPLETED`.
+- `RecordingAnalysisResultRepository` application port.
+- In-memory result repository for the default profile.
+- JDBC result repository for the `local` profile.
+- Flyway migration `V2__create_recording_analysis_results_table.sql`.
+- Worker-side placeholder result creation when `ProcessRecordingAnalysisJobService` completes an analysis job.
+- README and architecture documentation updates.
+
+Intentionally not included:
+
+- No snoring, apnea, silence, or audio detection logic.
+- No real metrics or result fields.
+- No public HTTP endpoint for reading analysis results.
+- No analysis failure result model yet.
+- No DLQ or retry policy changes.
+
+### TDD Notes
+
+- Added tests first:
+  - `RecordingAnalysisResultTest`;
+  - `ProcessRecordingAnalysisJobServiceTest` assertion that a placeholder result is saved;
+  - `JdbcRecordingAnalysisResultRepositoryTest`.
+- First expected red state:
+  - result domain type, status enum, repository port, JDBC adapter, migration, and updated service constructor did not exist.
+- Added minimal production code.
+- Focused tests passed, then full test suite passed.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/RecordingAnalysisResult.java`
+- `src/main/java/com/example/sleep/recordings/RecordingAnalysisResultStatus.java`
+- `src/main/java/com/example/sleep/recordings/application/RecordingAnalysisResultRepository.java`
+- `src/main/java/com/example/sleep/recordings/infrastructure/InMemoryRecordingAnalysisResultRepository.java`
+- `src/main/java/com/example/sleep/recordings/infrastructure/JdbcRecordingAnalysisResultRepository.java`
+- `src/main/resources/db/migration/V2__create_recording_analysis_results_table.sql`
+- `src/test/java/com/example/sleep/recordings/RecordingAnalysisResultTest.java`
+- `src/test/java/com/example/sleep/recordings/infrastructure/JdbcRecordingAnalysisResultRepositoryTest.java`
+
+### Files Changed
+
+- `README.md`
+- `architecture-decisions.md`
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `src/main/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobService.java`
+- `src/test/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobServiceTest.java`
+- `project-log.md`
+
+### Commands Run
+
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobService.java`
+- `sed -n '1,260p' src/test/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobServiceTest.java`
+- `sed -n '1,260p' src/main/resources/db/migration/V1__create_recordings_table.sql`
+- `sed -n '1,260p' src/test/java/com/example/sleep/recordings/infrastructure/JdbcRecordingRepositoryTest.java`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository -Dtest=RecordingAnalysisResultTest,ProcessRecordingAnalysisJobServiceTest,JdbcRecordingAnalysisResultRepositoryTest test`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `docker compose ps`
+- `SPRING_PROFILES_ACTIVE=local MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository spring-boot:run`
+- `docker compose exec -T postgres psql -U sleep_app -d sleep_monitoring -c "SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;"`
+- `docker compose exec -T postgres psql -U sleep_app -d sleep_monitoring -c "\\d recording_analysis_results"`
+- `kill 80534`
+- `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/actuator/health`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Focused test command passed:
+  - 10 tests run.
+  - 0 failures.
+  - 0 errors.
+- Full Maven test suite passed:
+  - 63 tests run.
+  - 0 failures.
+  - 0 errors.
+- Local Postgres migration verification passed:
+  - Flyway applied version `2 - create recording analysis results table`.
+  - `recording_analysis_results` exists with:
+    - primary key on `recording_id`;
+    - status;
+    - completed timestamp;
+    - summary;
+    - foreign key to `recordings(id)`.
+- Spring Boot dev server was stopped after verification.
+
+### Environment Notes
+
+- Docker Compose and local-profile Spring Boot runtime checks required elevated permissions from this tool session.
+
+### Modern Java Notes
+
+- `RecordingAnalysisResult.equals(...)` uses pattern matching for `instanceof`, a Java feature newer than Java 8. It keeps the equality check concise while still type-checking before comparing fields.
+
+### Next Proposed Action
+
+Review and commit/push this placeholder analysis result boundary. After that, the next possible step is to expose the placeholder analysis result through a read-only HTTP endpoint, still without adding real detection logic.
