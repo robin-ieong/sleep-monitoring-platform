@@ -18,9 +18,9 @@ The platform will accept sleep audio recordings, store them, process them asynch
 
 ## Current Scope
 
-This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, recording persistence, storage/upload ports, thin HTTP endpoints, LocalStack S3 integration for presigned upload URLs and object verification, and a LocalStack SQS boundary for future analysis jobs.
+This repository currently contains the foundation application scaffold, local development infrastructure, recording lifecycle domain, recording persistence, storage/upload ports, thin HTTP endpoints, LocalStack S3 integration for presigned upload URLs and object verification, a LocalStack SQS boundary for analysis job requests, and a small worker-side service for processing one queued analysis message body.
 
-No SQS worker or detection logic has been implemented yet.
+No SQS polling loop, separate worker runtime, or detection logic has been implemented yet.
 
 ## Recording Registration Endpoint
 
@@ -116,6 +116,16 @@ POST /recordings/rec-123/analysis-requests
 
 Successful responses return `202 Accepted` and the updated recording metadata with status `ANALYSIS_REQUESTED`. The application persists the lifecycle transition and enqueues a small message for future analysis work. With the `local` profile, this uses LocalStack SQS; with the default profile, it uses a fake queue adapter.
 
+## Analysis Worker Boundary
+
+The application layer now has a `ProcessRecordingAnalysisJobService` that can process one queued analysis message body:
+
+```json
+{"recordingId":"rec-123","status":"ANALYSIS_REQUESTED"}
+```
+
+For now, this worker-side boundary loads the recording, verifies the existing lifecycle state through the domain model, marks analysis as completed, and saves the updated metadata. This is placeholder worker behavior only. There is no SQS polling loop, separate worker runtime, analysis result model, or snoring/apnea/silence detection logic yet.
+
 ## Recording Package Structure
 
 The `recordings` module is split by responsibility:
@@ -123,7 +133,7 @@ The `recordings` module is split by responsibility:
 - `recordings`: domain model and value objects.
 - `recordings.application`: application services, commands, and repository port.
 - `recordings.web`: Spring MVC controllers and HTTP DTOs.
-- `recordings.infrastructure`: current in-memory repository implementation.
+- `recordings.infrastructure`: adapter implementations for in-memory/fake defaults plus JDBC, S3, and SQS integrations used by the `local` profile.
 
 With the default profile, the app uses in-memory/fake adapters for lightweight startup and tests. With the `local` profile, recording metadata is persisted in PostgreSQL, S3 upload behavior uses LocalStack S3, and analysis requests are queued in LocalStack SQS.
 

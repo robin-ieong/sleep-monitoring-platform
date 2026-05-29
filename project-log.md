@@ -2540,3 +2540,221 @@ Intentionally not included:
 ### Next Proposed Step
 
 Review and commit Step 16. After that, a sensible next milestone would be an analysis-worker skeleton that consumes SQS messages and marks analysis completion with placeholder behavior only, but this should be confirmed before implementation because it begins the worker side of the system.
+
+## 2026-05-28 15:52 BST - Push Checkpoint and Git Preference
+
+### User Request
+
+The user confirmed the Step 16 changes were pushed and stated a preference to run all Git commands themselves.
+
+### Decision
+
+Future sessions should not run Git commands unless the user explicitly asks for them. Repository state can be discussed from user-provided information, and normal file edits/checks can continue as needed.
+
+### Files Changed
+
+- Updated `project-log.md` with this push checkpoint and Git workflow preference.
+
+## 2026-05-28 16:30 BST - Step 17: Analysis Worker Message Processing Boundary
+
+### User Request
+
+Proceed with the next step after clarifying that a worker is background application code that talks to SQS through an SQS client, not through the HTTP API.
+
+### Scope
+
+Added the first worker-side application boundary for processing one queued analysis message body.
+
+Included:
+
+- `ProcessRecordingAnalysisJobService`.
+- Unit tests for:
+  - completing analysis for a queued recording;
+  - persisting `ANALYSIS_COMPLETED`;
+  - rejecting missing recordings;
+  - rejecting recordings that are not in `ANALYSIS_REQUESTED`;
+  - rejecting unexpected message statuses;
+  - rejecting malformed messages.
+- Spring bean wiring for `ProcessRecordingAnalysisJobService`.
+- README documentation for the worker boundary.
+
+Intentionally not included:
+
+- No SQS polling loop.
+- No separate worker runtime or process mode.
+- No SQS message deletion behavior.
+- No analysis result schema.
+- No snoring, apnea, silence, or audio detection logic.
+
+### TDD Notes
+
+- Added `ProcessRecordingAnalysisJobServiceTest` before production code.
+- Ran Maven tests and confirmed the expected red state:
+  - `ProcessRecordingAnalysisJobService` did not exist.
+- Added the minimal production service.
+- Replaced temporary regex JSON parsing with Jackson `ObjectMapper` because Spring Boot already provides Jackson and structured parsing is a better fit than ad hoc parsing.
+- Added Spring bean wiring and reran the full test suite.
+
+### Modern Java Notes
+
+- The service uses a private Java record, `AnalysisJobMessage`, as the JSON target for the queued message body. Records are newer than Java 8 and are useful here as compact immutable data carriers.
+
+### Files Added
+
+- `src/main/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobService.java`
+- `src/test/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobServiceTest.java`
+
+### Files Changed
+
+- `README.md`
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `project-log.md`
+
+### Commands Run
+
+- `sed -n '1,180p' src/test/java/com/example/sleep/recordings/RecordingTest.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/application/RequestRecordingAnalysisService.java`
+- `sed -n '1,220p' src/test/java/com/example/sleep/recordings/application/RequestRecordingAnalysisServiceTest.java`
+- `sed -n '1,220p' src/main/java/com/example/sleep/recordings/application/RecordingRepository.java`
+- `rg -n "ANALYSIS_COMPLETED|completeAnalysis|analysis-requests|RecordingAnalysisQueue|SqsRecording" src/main/java src/test/java README.md`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `jar tf .m2/repository/tools/jackson/core/jackson-databind/3.1.2/jackson-databind-3.1.2.jar | rg 'ObjectMapper.class|JsonMapper.class'`
+- `javap -classpath .m2/repository/tools/jackson/core/jackson-databind/3.1.2/jackson-databind-3.1.2.jar tools.jackson.databind.ObjectMapper`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Red-state Maven test run failed as expected before implementation due to the missing service class.
+- Final Maven test command succeeded:
+  - 55 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Next Proposed Step
+
+Review and commit Step 17. After that, confirm whether to add an actual SQS polling adapter that receives messages, calls `ProcessRecordingAnalysisJobService`, and deletes messages only after successful processing.
+
+## 2026-05-28 18:17 BST - End-of-Day Handoff After Unreviewed Step 17
+
+### User Request
+
+Document the current state before leaving, because Step 17 has not been reviewed yet.
+
+### Current State
+
+- Step 16 analysis request SQS boundary was pushed by the user earlier.
+- The user prefers to run all Git commands themselves.
+- Step 17 is implemented locally but has not been reviewed or committed by the user yet.
+- No Git commands were run after the user stated their Git preference.
+
+### Step 17 Implemented But Needs Review
+
+Files to review next time:
+
+- `src/main/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobService.java`
+- `src/test/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobServiceTest.java`
+- `src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `README.md`
+- `project-log.md`
+
+Review focus:
+
+- Confirm the worker boundary scope is acceptable:
+  - process one queued analysis message body;
+  - parse `recordingId` and `status`;
+  - require status `ANALYSIS_REQUESTED`;
+  - load the recording;
+  - call `Recording.completeAnalysis(...)`;
+  - persist `ANALYSIS_COMPLETED`.
+- Confirm it is acceptable that this step does not include:
+  - SQS polling;
+  - SQS delete-message behavior;
+  - a separate worker runtime;
+  - analysis results;
+  - snoring, apnea, silence, or audio detection logic.
+- Review the use of Jackson `ObjectMapper` and the private `AnalysisJobMessage` record in `ProcessRecordingAnalysisJobService`.
+
+### Latest Verification
+
+The latest full Maven test run succeeded after Step 17 implementation:
+
+```bash
+MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test
+```
+
+Result:
+
+- 55 tests run.
+- 0 failures.
+- 0 errors.
+
+### Commands Run
+
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Files Changed
+
+- Updated `project-log.md` with this handoff.
+
+### Next Proposed Action
+
+Start next time by reviewing the Step 17 files listed above. If the implementation looks good, the user should commit/push it themselves. Only after that should the next milestone be confirmed, likely an actual SQS polling adapter that receives messages, calls `ProcessRecordingAnalysisJobService`, and deletes messages after successful processing.
+
+## 2026-05-29 09:30 BST - Step 17 Handoff Review
+
+### User Request
+
+Read `AGENTS.md` and `project-log.md`, then continue from the handoff.
+
+### Findings
+
+- The active handoff was the unreviewed Step 17 worker-side boundary.
+- Reviewed `ProcessRecordingAnalysisJobService`, its unit tests, Spring bean wiring, and README worker documentation.
+- The Step 17 implementation matches the recorded scope:
+  - processes one queued analysis message body;
+  - requires message status `ANALYSIS_REQUESTED`;
+  - loads the recording;
+  - relies on the domain model to require lifecycle status `ANALYSIS_REQUESTED`;
+  - marks analysis as completed and persists the updated recording.
+- No SQS polling loop, message deletion behavior, separate worker runtime, analysis result model, or detection logic was added.
+- No Git commands were run, honoring the user's preference to run Git commands themselves.
+
+### Files Changed
+
+- Updated `README.md` to remove stale wording that said no SQS worker existed and to clarify that no SQS polling loop, separate worker runtime, or detection logic exists yet.
+- Updated `README.md` package-structure wording so infrastructure includes the current fake/default adapters plus JDBC, S3, and SQS local-profile integrations.
+- Updated `project-log.md` with this continuation entry.
+
+### Commands Run
+
+- `pwd && rg --files`
+- `sed -n '1,220p' AGENTS.md`
+- `sed -n '1,260p' project-log.md`
+- `sed -n '261,620p' project-log.md`
+- `sed -n '621,980p' project-log.md`
+- `tail -n 260 project-log.md`
+- `sed -n '1,260p' pom.xml`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/infrastructure/JdbcRecordingRepository.java`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/web/RecordingController.java`
+- `sed -n '1,260p' src/main/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobService.java`
+- `sed -n '1,320p' src/test/java/com/example/sleep/recordings/application/ProcessRecordingAnalysisJobServiceTest.java`
+- `sed -n '1,320p' src/main/java/com/example/sleep/recordings/RecordingConfiguration.java`
+- `rg -n "worker|ProcessRecording|analysis job|SQS polling|analysis-worker|analysis" README.md src/main/java src/test/java`
+- `sed -n '1,160p' README.md`
+- `MAVEN_USER_HOME=.m2 ./mvnw -Dmaven.repo.local=.m2/repository test`
+- `date '+%Y-%m-%d %H:%M %Z'`
+
+### Verification
+
+- Full Maven test command succeeded:
+  - 55 tests run.
+  - 0 failures.
+  - 0 errors.
+
+### Modern Java Notes
+
+- Step 17 still uses a private Java record, `AnalysisJobMessage`, as the Jackson JSON target. Records are newer than Java 8; here they keep the parsed queue message immutable and compact without writing boilerplate fields, constructor, and accessors.
+
+### Next Proposed Action
+
+The Step 17 review found no code issues. The user should review and commit/push Step 17 themselves if satisfied. After that, confirm the next milestone before implementation, likely an SQS polling adapter that receives messages, calls `ProcessRecordingAnalysisJobService`, and deletes messages only after successful processing.

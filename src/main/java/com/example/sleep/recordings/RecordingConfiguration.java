@@ -4,6 +4,7 @@ import com.example.sleep.recordings.application.CompleteRecordingUploadService;
 import com.example.sleep.recordings.application.CreateRecordingUploadService;
 import com.example.sleep.recordings.application.MarkRecordingStoredService;
 import com.example.sleep.recordings.application.PresignedRecordingUploadPort;
+import com.example.sleep.recordings.application.ProcessRecordingAnalysisJobService;
 import com.example.sleep.recordings.application.RecordingAnalysisQueue;
 import com.example.sleep.recordings.application.RecordingObjectVerifier;
 import com.example.sleep.recordings.application.RecordingRepository;
@@ -129,6 +130,14 @@ public class RecordingConfiguration {
             Clock clock
     ) {
         return new RequestRecordingAnalysisService(repository, queue, clock);
+    }
+
+    @Bean
+    ProcessRecordingAnalysisJobService processRecordingAnalysisJobService(
+            RecordingRepository repository,
+            Clock clock
+    ) {
+        return new ProcessRecordingAnalysisJobService(repository, clock);
     }
 
     @Bean
